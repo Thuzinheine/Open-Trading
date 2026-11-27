@@ -278,6 +278,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const emaFastRef = useRef<LinePoint[]>([]);
     const emaSlowRef = useRef<LinePoint[]>([]);
     const displayCandlesRef = useRef<CandleBar[]>([]);
+    const displayVolumesRef = useRef<VolumeBar[]>([]);
     const prevSymIntervalRef = useRef<string>('');
     const prevFirstCandleTimeRef = useRef<number | null>(null);
     const prevSeriesStateRef = useRef<{
@@ -418,6 +419,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       : volumes;
 
     displayCandlesRef.current = effectiveCandles;
+    displayVolumesRef.current = effectiveVolumes;
 
     // Clear in-progress drawing when switching tools
     useEffect(() => {
@@ -718,7 +720,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         const priceBg = isBull ? symCfg.upColor : symCfg.downColor;
         const cdText =
           !isReplayMode && sc.countdownToBarClose ? countdownStrRef.current : '';
-        const h = cdText ? 31 : pillH;
+        const h = cdText ? 32 : pillH;
         const top = Math.max(2, Math.min(maxBottom - h, Math.round(py - halfPill)));
         priceBadge = {
           id: 'current_price',
@@ -732,19 +734,26 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         };
       }
 
-      // 2. Active overlay indicator badges (EMA10, EMA20, EMA50, EMA200, BB)
+      // 2. All Price Scale indicator badges (EMA10, EMA20, EMA50, EMA200, BB, VolMA, Volume)
       const indRaw: RawBadge[] = [];
       if (sc.indicatorsLabel !== 'hidden') {
-        const pushInd = (id: string, enabled: boolean, value: number | undefined, color: string) => {
-          if (!enabled || value === undefined || !Number.isFinite(value)) return;
-          const y = series.priceToCoordinate(value);
+        const pushInd = (
+          id: string,
+          enabled: boolean,
+          value: number | undefined,
+          color: string,
+          coordSeries: ISeriesApi<'Candlestick' | 'Line' | 'Histogram'> | null = series,
+          formatter: (v: number) => string = (v) => fmtPrice(v, prec)
+        ) => {
+          if (!enabled || value === undefined || !Number.isFinite(value) || !coordSeries) return;
+          const y = coordSeries.priceToCoordinate(value);
           if (y === null || !Number.isFinite(Number(y))) return;
           const iy = Number(y);
-          if (iy < -20 || iy > maxBottom + 20) return;
+          if (iy < -24 || iy > maxBottom + 24) return;
           indRaw.push({
             id,
             kind: 'indicator',
-            text: fmtPrice(value, prec),
+            text: formatter(value),
             bgColor: color,
             idealY: iy,
             top: Math.max(2, Math.min(maxBottom - pillH, Math.round(iy - halfPill))),
@@ -759,11 +768,39 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         pushInd('bb_upper', ind.bb.enabled, vals.bbUpper, ind.bb.color);
         pushInd('bb_mid', ind.bb.enabled, vals.bbMid, ind.bb.color);
         pushInd('bb_lower', ind.bb.enabled, vals.bbLower, ind.bb.color);
+
+        // Include Volume & Vol MA in the unified collision-free stack (fixes D1 bottom overlap!)
+        const volArr = displayVolumesRef.current;
+        const lastVol = volArr.length ? volArr[volArr.length - 1] : null;
+        if (ind.volume.enabled) {
+          if (ind.volume.showMa && vals.volMa !== undefined) {
+            pushInd(
+              'vol_ma',
+              true,
+              vals.volMa,
+              '#9c27b0',
+              volMaSeriesRef.current,
+              (v) => fmtCompact(v)
+            );
+          }
+          if (lastVol && Number.isFinite(lastVol.value)) {
+            const volColor = lastBar.close >= lastBar.open ? '#089981' : '#f23645';
+            pushInd(
+              'vol_last',
+              true,
+              lastVol.value,
+              volColor,
+              volumeSeriesRef.current,
+              (v) => fmtCompact(v)
+            );
+          }
+        }
       }
 
-      // 3. Collision-free stacking matching TradingView's Price Scale layout
+      // 3. Guaranteed Zero-Overlap Bidirectional Stacking Solver
       const resolved: RawBadge[] = [];
       if (sc.noOverlappingLabels) {
+        let ordered: RawBadge[];
         if (priceBadge) {
           const above = indRaw
             .filter((b) => b.idealY < priceBadge!.idealY)
@@ -778,13 +815,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             item.top = Math.min(Math.round(item.idealY - halfPill), upCursor - item.height);
             upCursor = item.top;
           }
-          // Keep top-most above badges inside viewport
           above.reverse();
-          let minTop = 2;
-          for (const item of above) {
-            if (item.top < minTop) item.top = minTop;
-            minTop = item.top + item.height;
-          }
 
           // Stack indicators below Current Price downward from bottom of Price+Countdown box
           let downCursor = priceBadge.top + priceBadge.height;
@@ -792,26 +823,34 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             item.top = Math.max(Math.round(item.idealY - halfPill), downCursor);
             downCursor = item.top + item.height;
           }
-          // Keep bottom-most below badges above time axis
-          let maxBot = maxBottom;
-          for (let i = below.length - 1; i >= 0; i--) {
-            const item = below[i];
-            if (item.top + item.height > maxBot) {
-              item.top = Math.max(priceBadge.top + priceBadge.height, maxBot - item.height);
-            }
-            maxBot = item.top;
-          }
 
-          resolved.push(...above, priceBadge, ...below);
+          ordered = [...above, priceBadge, ...below];
         } else {
-          const sorted = [...indRaw].sort((a, b) => a.idealY - b.idealY);
+          ordered = [...indRaw].sort((a, b) => a.idealY - b.idealY);
           let cursor = 2;
-          for (const item of sorted) {
+          for (const item of ordered) {
             item.top = Math.max(Math.round(item.idealY - halfPill), cursor);
             cursor = item.top + item.height;
           }
-          resolved.push(...sorted);
         }
+
+        // Bottom boundary pass: cascade upward so nothing clips past time axis OR overlaps
+        for (let i = ordered.length - 1; i >= 0; i--) {
+          const limit = i === ordered.length - 1 ? maxBottom : ordered[i + 1].top;
+          if (ordered[i].top + ordered[i].height > limit) {
+            ordered[i].top = limit - ordered[i].height;
+          }
+        }
+
+        // Top boundary pass: cascade downward so nothing clips above top edge OR overlaps
+        for (let i = 0; i < ordered.length; i++) {
+          const minTop = i === 0 ? 2 : ordered[i - 1].top + ordered[i - 1].height;
+          if (ordered[i].top < minTop) {
+            ordered[i].top = minTop;
+          }
+        }
+
+        resolved.push(...ordered);
       } else {
         if (priceBadge) resolved.push(priceBadge);
         resolved.push(...indRaw);
@@ -902,6 +941,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       const volumeSeries = chart.addHistogramSeries({
         priceFormat: { type: 'volume' },
         priceScaleId: 'vol',
+        priceLineVisible: false,
+        lastValueVisible: false,
       });
       chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
 
@@ -910,6 +951,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         priceScaleId: 'vol',
         priceLineVisible: false,
+        lastValueVisible: false,
       });
 
       const emaFastSeries = chart.addLineSeries({
@@ -1267,7 +1309,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           borderColor: borderCol,
           autoScale: sc.autoScale,
           invertScale: sc.invertScale,
-          minimumWidth: 66,
+          minimumWidth: 70,
           mode: priceMode,
           scaleMargins: { top: marginTop, bottom: marginBottom },
         },
@@ -1276,7 +1318,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           borderColor: borderCol,
           autoScale: sc.autoScale,
           invertScale: sc.invertScale,
-          minimumWidth: 66,
+          minimumWidth: 70,
           mode: priceMode,
           scaleMargins: { top: marginTop, bottom: marginBottom },
         },
@@ -1634,6 +1676,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           redrawOverlay();
           updateCountdownPos();
           requestAnimationFrame(() => {
+            updateCountdownPos();
             isApplyingZoomRef.current = false;
           });
         });
@@ -1647,7 +1690,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         requestAnimationFrame(() => {
           drawEmaCloud();
           redrawOverlay();
-          isApplyingZoomRef.current = false;
+          updateCountdownPos();
+          requestAnimationFrame(() => {
+            updateCountdownPos();
+            isApplyingZoomRef.current = false;
+          });
         });
       } else {
         requestAnimationFrame(() => {
@@ -3685,17 +3732,17 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             </form>
           )}
 
-          {/* Unified Collision-Free TradingView Price Scale Badges (EMA10, EMA20, Current Price + Candle Time) */}
+          {/* Unified Collision-Free Sharp-Corner TradingView Price Scale Badges */}
           {scaleBadges.map((badge) => (
             <div
               key={badge.id}
               className={`absolute ${
                 chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
-              } z-[9] pointer-events-none text-white select-none rounded-[2px] flex flex-col justify-center overflow-hidden`}
+              } z-[9] pointer-events-none text-white select-none rounded-none flex flex-col justify-center overflow-hidden`}
               style={{
                 top: `${badge.top}px`,
                 height: `${badge.height}px`,
-                width: `${Math.max(58, rightScaleWidth - 1)}px`,
+                width: `${Math.max(64, rightScaleWidth - 1)}px`,
                 backgroundColor: badge.bgColor,
                 paddingLeft: '7px',
                 paddingRight: '3px',
@@ -3705,18 +3752,18 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
-              <span className="font-semibold leading-[15px] whitespace-nowrap tracking-[-0.01em]">
+              <span className="font-semibold leading-[14px] whitespace-nowrap tracking-[-0.01em]">
                 {badge.text}
               </span>
               {badge.subText && (
-                <span className="font-medium leading-[13px] whitespace-nowrap tracking-[-0.01em] opacity-95">
+                <span className="font-medium leading-[14px] whitespace-nowrap tracking-[-0.01em] opacity-95">
                   {badge.subText}
                 </span>
               )}
             </div>
           ))}
 
-          {/* Top-Layer Crosshair Price Tag (floats cleanly above EMA & Current Price badges when hovering) */}
+          {/* Top-Layer Sharp-Corner Crosshair Price Tag */}
           {crosshairPlus && activeTool !== 'arrow' && crosshairPlus.y > 10 && (() => {
             const lastBarClose = effectiveCandles[effectiveCandles.length - 1]?.close ?? crosshairPlus.price;
             const prec =
@@ -3727,11 +3774,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               <div
                 className={`absolute ${
                   chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
-                } z-[15] pointer-events-none bg-[#131722] dark:bg-[#2a2e39] text-white select-none rounded-[2px] flex items-center overflow-hidden`}
+                } z-[15] pointer-events-none bg-[#131722] dark:bg-[#2a2e39] text-white select-none rounded-none flex items-center overflow-hidden`}
                 style={{
                   top: `${Math.round(crosshairPlus.y - 9.5)}px`,
                   height: '19px',
-                  width: `${Math.max(58, rightScaleWidth - 1)}px`,
+                  width: `${Math.max(64, rightScaleWidth - 1)}px`,
                   paddingLeft: '7px',
                   paddingRight: '3px',
                   fontSize: `${chartSettings.canvas.scaleFontSize || 11}px`,
@@ -3747,7 +3794,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             );
           })()}
 
-          {/* Price-Scale Crosshair (+) Quick Action Button (Screenshot 5) */}
+          {/* Price-Scale Crosshair (+) Quick Action Button */}
           {chartSettings.scales.plusButton && crosshairPlus && activeTool !== 'arrow' && crosshairPlus.y > 14 && (
             <div
               ref={plusMenuRef}
@@ -3767,7 +3814,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                   setPlusMenuOpen((v) => !v);
                 }}
                 title={`Quick actions at ${fmtPrice(crosshairPlus.price)}`}
-                className="w-[22px] h-[19px] rounded-[2px] bg-[#131722] dark:bg-[#2a2e39] hover:bg-[var(--accent)] text-white inline-flex items-center justify-center shadow-sm cursor-pointer transition-colors"
+                className="w-[22px] h-[19px] rounded-none bg-[#131722] dark:bg-[#2a2e39] hover:bg-[var(--accent)] text-white inline-flex items-center justify-center shadow-sm cursor-pointer transition-colors"
               >
                 <PlusCircle className="w-3.5 h-3.5" strokeWidth={2} />
               </button>
