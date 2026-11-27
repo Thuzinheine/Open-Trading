@@ -1837,6 +1837,14 @@ export default function App() {
             onReorderDrawing={handleReorderDrawing}
             onRequestOlderHistory={() => prependOlderCandles()}
             alerts={alerts}
+            onDeleteAlert={(id) => setAlerts((prev) => prev.filter((a) => a.id !== id))}
+            onUpdateAlertPrice={(id, newPrice) =>
+              setAlerts((prev) =>
+                prev.map((a) =>
+                  a.id === id ? { ...a, price: newPrice, active: true, triggeredAt: undefined } : a
+                )
+              )
+            }
             positions={paperAccount.positions}
             limitOrders={paperAccount.limitOrders}
             isReplayMode={isReplayMode}

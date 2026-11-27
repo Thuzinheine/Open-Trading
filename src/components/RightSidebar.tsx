@@ -29,6 +29,10 @@ import {
   Mountain,
   Rss,
   MessageSquare,
+  Search,
+  ArrowDownWideNarrow,
+  Pause,
+  Play,
 } from 'lucide-react';
 import {
   CandleBar,
@@ -636,6 +640,34 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const spread = bestAsk && bestBid ? bestAsk - bestBid : 0;
   const spreadPct = bestAsk ? (spread / bestAsk) * 100 : 0;
   const activeAlertsCount = alerts.filter((a) => a.active).length;
+  const [alertsSubTab, setAlertsSubTab] = useState<'alerts' | 'log'>('alerts');
+  const [alertSearchOpen, setAlertSearchOpen] = useState(false);
+  const [alertSearchQuery, setAlertSearchQuery] = useState('');
+  const [alertSortDesc, setAlertSortDesc] = useState(true);
+  const [alertMoreOpen, setAlertMoreOpen] = useState(false);
+
+  const filteredAlerts = useMemo(() => {
+    const q = alertSearchQuery.trim().toLowerCase();
+    const base = alerts.filter((al) => {
+      if (!q) return true;
+      return (
+        al.symbol.toLowerCase().includes(q) ||
+        (al.note && al.note.toLowerCase().includes(q)) ||
+        String(al.price).includes(q)
+      );
+    });
+    return [...base].sort((a, b) =>
+      alertSortDesc ? b.createdAt - a.createdAt : a.createdAt - b.createdAt
+    );
+  }, [alerts, alertSearchQuery, alertSortDesc]);
+
+  const alertLogs = useMemo(
+    () =>
+      alerts
+        .filter((al) => Boolean(al.triggeredAt))
+        .sort((a, b) => (b.triggeredAt || 0) - (a.triggeredAt || 0)),
+    [alerts]
+  );
 
   const handleRailClick = (tab: RightPanelTab) => {
     if (visible && activeTab === tab) {
@@ -1836,92 +1868,252 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             </>
           )}
 
-          {/* ALERTS TAB */}
+          {/* ALERTS TAB (Exact TradingView Alerts / Log Panel) */}
           {activeTab === 'alerts' && (
-            <>
-              <div className="h-[42px] px-3 border-b border-[var(--border)] flex items-center justify-between shrink-0">
-                <span className="font-bold text-[13px] text-[var(--text-main)]">
-                  Alerts ({activeAlertsCount})
-                </span>
-                <button
-                  onClick={onOpenAlertModal}
-                  className="h-7 px-2.5 rounded bg-[var(--accent)] text-white text-xs font-semibold inline-flex items-center gap-1 hover:opacity-90 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  New
-                </button>
+            <div className="flex-1 flex flex-col min-h-0">
+              {/* Top Segmented Switch: Alerts | Log */}
+              <div className="px-3 pt-2.5 pb-2 shrink-0">
+                <div className="grid grid-cols-2 p-[3px] rounded-[7px] bg-[#f0f3fa] dark:bg-[#2a2e39]">
+                  <button
+                    type="button"
+                    onClick={() => setAlertsSubTab('alerts')}
+                    className={`py-1 text-[13px] rounded-[5px] transition-colors cursor-pointer ${
+                      alertsSubTab === 'alerts'
+                        ? 'bg-[var(--bg-surface)] text-[var(--text-main)] font-medium shadow-xs'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-main)] font-normal'
+                    }`}
+                  >
+                    Alerts
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAlertsSubTab('log')}
+                    className={`py-1 text-[13px] rounded-[5px] transition-colors cursor-pointer ${
+                      alertsSubTab === 'log'
+                        ? 'bg-[var(--bg-surface)] text-[var(--text-main)] font-medium shadow-xs'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-main)] font-normal'
+                    }`}
+                  >
+                    Log
+                  </button>
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto divide-y divide-[var(--border)]">
-                {alerts.length === 0 ? (
-                  <div className="p-6 text-center space-y-2">
-                    <Bell className="w-7 h-7 mx-auto text-[var(--text-muted)] opacity-50" />
-                    <div className="text-xs font-semibold text-[var(--text-main)]">
-                      No Price Alerts Yet
-                    </div>
-                    <p className="text-[11px] text-[var(--text-muted)]">
-                      Alerts trigger live audio & toast notifications when Binance price crosses your target level.
-                    </p>
-                  </div>
-                ) : (
-                  alerts.map((al) => (
-                    <div key={al.id} className="p-3 hover:bg-[var(--bg-hover)]/60 transition-colors">
-                      <div className="flex items-center justify-between mb-1">
+              {/* Action Icon Toolbar: + on left, Search / Sort / More on right */}
+              <div className="h-[34px] px-2.5 border-b border-[var(--border)] flex items-center justify-between shrink-0 relative">
+                <button
+                  type="button"
+                  onClick={onOpenAlertModal}
+                  title="Create alert"
+                  className="w-7 h-7 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] inline-flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <Plus className="w-[18px] h-[18px]" strokeWidth={1.6} />
+                </button>
+
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAlertSearchOpen((v) => !v);
+                      if (alertSearchOpen) setAlertSearchQuery('');
+                    }}
+                    title="Search alerts"
+                    className={`w-7 h-7 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center cursor-pointer transition-colors ${
+                      alertSearchOpen
+                        ? 'bg-[var(--bg-hover)] text-[var(--accent)]'
+                        : 'text-[var(--text-main)]'
+                    }`}
+                  >
+                    <Search className="w-[15px] h-[15px]" strokeWidth={1.6} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAlertSortDesc((v) => !v)}
+                    title={alertSortDesc ? 'Newest first' : 'Oldest first'}
+                    className="w-7 h-7 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] inline-flex items-center justify-center cursor-pointer transition-colors"
+                  >
+                    <ArrowDownWideNarrow className="w-[16px] h-[16px]" strokeWidth={1.6} />
+                  </button>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setAlertMoreOpen((v) => !v)}
+                      title="Alert actions"
+                      className="w-7 h-7 rounded hover:bg-[var(--bg-hover)] text-[var(--text-main)] inline-flex items-center justify-center cursor-pointer transition-colors"
+                    >
+                      <MoreHorizontal className="w-[16px] h-[16px]" strokeWidth={1.6} />
+                    </button>
+                    {alertMoreOpen && (
+                      <div className="absolute right-0 top-8 w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-md shadow-xl py-1 z-30 text-xs">
                         <button
-                          onClick={() => onSelectSymbol(al.symbol)}
-                          className="font-bold text-xs text-[var(--text-main)] hover:text-[var(--accent)] cursor-pointer"
+                          type="button"
+                          onClick={() => {
+                            alerts.filter((a) => !a.active).forEach((a) => onDeleteAlert(a.id));
+                            setAlertMoreOpen(false);
+                          }}
+                          className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer"
                         >
-                          {al.symbol}
+                          Remove inactive alerts
                         </button>
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`text-[10px] font-semibold ${
-                              al.active ? 'text-[var(--up)]' : 'text-[var(--amber)]'
-                            }`}
-                          >
-                            {al.active ? 'Active' : 'Triggered'}
-                          </span>
-                          <button
-                            onClick={() => onToggleAlert(al.id)}
-                            className="text-[10px] px-1.5 py-0.5 rounded border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
-                          >
-                            {al.active ? 'Pause' : 'Rearm'}
-                          </button>
-                          <button
-                            onClick={() => onDeleteAlert(al.id)}
-                            className="text-[var(--text-muted)] hover:text-[var(--down)] cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            alerts.forEach((a) => onDeleteAlert(a.id));
+                            setAlertMoreOpen(false);
+                          }}
+                          className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--down)] cursor-pointer"
+                        >
+                          Remove all alerts
+                        </button>
                       </div>
-                      <div className="flex items-center justify-between text-xs font-mono-num">
-                        <span className="text-[var(--text-muted)]">
-                          {al.condition === 'above'
-                            ? 'Crossing Up'
-                            : al.condition === 'below'
-                            ? 'Crossing Down'
-                            : 'Crossing'}
-                        </span>
-                        <span className="font-bold text-[var(--text-main)]">
-                          ${fmtPrice(al.price)}
-                        </span>
-                      </div>
-                      {al.note && (
-                        <div className="text-[11px] text-[var(--text-muted)] mt-1 truncate">
-                          {al.note}
-                        </div>
-                      )}
-                      {al.triggeredAt && (
-                        <div className="text-[10px] text-[var(--amber)] mt-1 font-mono-num">
-                          Triggered {new Date(al.triggeredAt).toLocaleTimeString('en-GB')}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                )}
+                    )}
+                  </div>
+                </div>
               </div>
-            </>
+
+              {/* Optional inline Search Input */}
+              {alertSearchOpen && (
+                <div className="px-2.5 py-1.5 border-b border-[var(--border)] shrink-0">
+                  <div className="relative flex items-center">
+                    <Search className="w-3.5 h-3.5 text-[var(--text-muted)] absolute left-2 pointer-events-none" />
+                    <input
+                      autoFocus
+                      type="text"
+                      value={alertSearchQuery}
+                      onChange={(e) => setAlertSearchQuery(e.target.value)}
+                      placeholder="Filter alerts..."
+                      className="w-full h-7 pl-7 pr-6 text-xs bg-[var(--bg-app)] text-[var(--text-main)] border border-[var(--border)] rounded outline-none focus:border-[var(--accent)]"
+                    />
+                    {alertSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setAlertSearchQuery('')}
+                        className="absolute right-1.5 text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Alerts List vs Triggered Log */}
+              {alertsSubTab === 'alerts' ? (
+                <div className="flex-1 overflow-y-auto divide-y divide-[var(--border)]">
+                  {filteredAlerts.length === 0 ? (
+                    <div className="p-6 text-center space-y-2">
+                      <Bell className="w-7 h-7 mx-auto text-[var(--text-muted)] opacity-45" />
+                      <div className="text-xs font-medium text-[var(--text-main)]">
+                        {alerts.length === 0 ? 'No Alerts' : 'No matching alerts'}
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)]">
+                        Click + to set a live price crossing alert.
+                      </p>
+                    </div>
+                  ) : (
+                    filteredAlerts.map((al) => {
+                      const condLabel =
+                        al.condition === 'above'
+                          ? 'Crossing Up'
+                          : al.condition === 'below'
+                          ? 'Crossing Down'
+                          : 'Crossing';
+                      const headline = al.note?.trim()
+                        ? al.note.trim()
+                        : `${al.symbol} ${condLabel} ${fmtPrice(al.price)}`;
+                      return (
+                        <div
+                          key={al.id}
+                          onClick={() => onSelectSymbol(al.symbol)}
+                          className="group relative px-3 py-2.5 hover:bg-[var(--bg-hover)]/65 transition-colors cursor-pointer"
+                        >
+                          <div className="text-[13px] font-normal text-[var(--text-main)] leading-[1.35] truncate pr-12">
+                            {headline}
+                          </div>
+                          <div className="mt-1 flex items-center gap-1.5 text-[11.5px] leading-none">
+                            <CoinLogo symbol={al.symbol} size={16} />
+                            <span className="text-[var(--text-main)] font-normal">{al.symbol}</span>
+                            <span className="text-[var(--text-muted)]">•</span>
+                            <span
+                              className={
+                                al.active
+                                  ? 'text-[#089981] font-normal'
+                                  : 'text-[var(--text-muted)] font-normal'
+                              }
+                            >
+                              {al.active ? 'Active' : 'Stopped'}
+                            </span>
+                          </div>
+
+                          {/* Hover Quick Controls (hidden when resting like TradingView) */}
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="hidden group-hover:flex items-center gap-0.5 absolute right-2 top-1/2 -translate-y-1/2 bg-[var(--bg-surface)]/95 border border-[var(--border)] rounded px-0.5 py-0.5 shadow-xs"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => onToggleAlert(al.id)}
+                              title={al.active ? 'Stop alert' : 'Restart alert'}
+                              className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] inline-flex items-center justify-center cursor-pointer"
+                            >
+                              {al.active ? (
+                                <Pause className="w-3.5 h-3.5" />
+                              ) : (
+                                <Play className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => onDeleteAlert(al.id)}
+                              title="Delete alert"
+                              className="w-6 h-6 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[#f23645] inline-flex items-center justify-center cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1 overflow-y-auto divide-y divide-[var(--border)]">
+                  {alertLogs.length === 0 ? (
+                    <div className="p-6 text-center space-y-1.5">
+                      <div className="text-xs font-medium text-[var(--text-main)]">
+                        Alerts log is empty
+                      </div>
+                      <p className="text-[11px] text-[var(--text-muted)]">
+                        Triggered alerts will appear here with timestamps.
+                      </p>
+                    </div>
+                  ) : (
+                    alertLogs.map((al) => (
+                      <div
+                        key={`log-${al.id}`}
+                        onClick={() => onSelectSymbol(al.symbol)}
+                        className="px-3 py-2.5 hover:bg-[var(--bg-hover)]/60 cursor-pointer"
+                      >
+                        <div className="text-[12.5px] text-[var(--text-main)] truncate">
+                          {al.note?.trim() || `${al.symbol} Crossing ${fmtPrice(al.price)}`}
+                        </div>
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--text-muted)]">
+                          <span className="flex items-center gap-1.5">
+                            <CoinLogo symbol={al.symbol} size={14} />
+                            <span>{al.symbol}</span>
+                          </span>
+                          <span className="font-mono-num">
+                            {al.triggeredAt
+                              ? new Date(al.triggeredAt).toLocaleTimeString('en-GB')
+                              : ''}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </aside>
       )}

@@ -151,6 +151,8 @@ interface ChartWorkspaceProps {
   onReorderDrawing: (id: string, dir: 'front' | 'back') => void;
   onRequestOlderHistory: () => void;
   alerts: PriceAlert[];
+  onDeleteAlert?: (id: string) => void;
+  onUpdateAlertPrice?: (id: string, price: number) => void;
   positions: PaperPosition[];
   limitOrders: PaperLimitOrder[];
   isReplayMode: boolean;
@@ -233,6 +235,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       onReorderDrawing,
       onRequestOlderHistory,
       alerts,
+      onDeleteAlert,
+      onUpdateAlertPrice,
       positions,
       limitOrders,
       isReplayMode,
@@ -330,6 +334,15 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     stayInDrawingRef.current = stayInDrawingMode;
     const onRequestOlderRef = useRef(onRequestOlderHistory);
     onRequestOlderRef.current = onRequestOlderHistory;
+    const alertsRef = useRef<PriceAlert[]>(alerts);
+    alertsRef.current = alerts;
+    const symbolRef = useRef<string>(symbol);
+    symbolRef.current = symbol;
+    const hoveredAlertIdRef = useRef<string | null>(null);
+    const isHoveringAlertPillRef = useRef(false);
+    const draggingAlertRef = useRef<{ id: string; price: number; y: number } | null>(null);
+    const onUpdateAlertPriceRef = useRef(onUpdateAlertPrice);
+    onUpdateAlertPriceRef.current = onUpdateAlertPrice;
 
     // UI states
     const [scaleMode, setScaleMode] = useState<ScaleMode>('auto');
@@ -414,6 +427,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const plusMenuOpenRef = useRef(false);
     plusMenuOpenRef.current = plusMenuAnchor !== null;
     const plusMenuRef = useRef<HTMLDivElement>(null);
+    const [alertHoverInfo, setAlertHoverInfo] = useState<{
+      id: string;
+      y: number;
+      price: number;
+      label: string;
+    } | null>(null);
 
     // Slice candles when in Replay mode
     const effectiveCandles = isReplayMode
@@ -670,6 +689,57 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         ctx.restore();
       }
 
+      // Draw TradingView Alert Lines (grey dashed line; blue circle dot ONLY when hovered or dragging!)
+      const csAlertsCfg = chartSettingsRef.current.alerts;
+      const series = candleSeriesRef.current;
+      if (csAlertsCfg.alertLines && series) {
+        const curSym = symbolRef.current;
+        const visibleAlerts = alertsRef.current.filter(
+          (a) => a.symbol === curSym && (!csAlertsCfg.onlyActiveAlerts || a.active)
+        );
+        if (visibleAlerts.length > 0) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(plotLeft, 0, plotWidth, plotHeight);
+          ctx.clip();
+          for (const a of visibleAlerts) {
+            const dragInfo = draggingAlertRef.current;
+            const effectivePrice = dragInfo && dragInfo.id === a.id ? dragInfo.price : a.price;
+            const rawY = series.priceToCoordinate(effectivePrice);
+            if (rawY === null || !Number.isFinite(Number(rawY))) continue;
+            const py = Math.round(Number(rawY)) + 0.5;
+            if (py < 0 || py > plotHeight) continue;
+
+            const isFocused =
+              hoveredAlertIdRef.current === a.id ||
+              (dragInfo !== null && dragInfo.id === a.id);
+
+            ctx.strokeStyle = isFocused ? '#787b86' : '#9598a1';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(plotLeft, py);
+            ctx.lineTo(plotLeft + plotWidth, py);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Blue-ringed white drag dot appears ONLY when hovering or dragging this alert!
+            if (isFocused) {
+              const dotX =
+                placement === 'left' ? plotLeft + 16 : plotLeft + plotWidth - 16;
+              ctx.beginPath();
+              ctx.arc(dotX, py, 3.6, 0, Math.PI * 2);
+              ctx.fillStyle = '#ffffff';
+              ctx.fill();
+              ctx.lineWidth = 1.8;
+              ctx.strokeStyle = '#2962ff';
+              ctx.stroke();
+            }
+          }
+          ctx.restore();
+        }
+      }
+
       if (zoomBoxRef.current) {
         const { x1, y1, x2, y2 } = zoomBoxRef.current;
         ctx.save();
@@ -838,6 +908,31 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             kind: 'indicator',
             text: fmtPrice(linePrice, prec),
             bgColor: d.color || '#2962ff',
+            idealY: iy,
+            top: Math.max(2, Math.min(maxBottom - pillH, Math.round(iy - halfPill))),
+            height: pillH,
+          });
+        }
+      }
+
+      // 2c. Alert price badges on the Price Scale (exact TradingView neutral grey #787b86)
+      if (csCfg.alerts.alertLines) {
+        const curSym = symbolRef.current;
+        const visibleAlerts = alertsRef.current.filter(
+          (a) => a.symbol === curSym && (!csCfg.alerts.onlyActiveAlerts || a.active)
+        );
+        for (const a of visibleAlerts) {
+          const dragInfo = draggingAlertRef.current;
+          const effectivePrice = dragInfo && dragInfo.id === a.id ? dragInfo.price : a.price;
+          const y = series.priceToCoordinate(effectivePrice);
+          if (y === null || !Number.isFinite(Number(y))) continue;
+          const iy = Number(y);
+          if (iy < -24 || iy > maxBottom + 24) continue;
+          indRaw.push({
+            id: `alert_${a.id}`,
+            kind: 'indicator',
+            text: fmtPrice(effectivePrice, prec),
+            bgColor: '#787b86',
             idealY: iy,
             top: Math.max(2, Math.min(maxBottom - pillH, Math.round(iy - halfPill))),
             height: pillH,
@@ -1903,26 +1998,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         );
       }
 
-      // Alert lines (Alerts tab)
-      if (chartSettings.alerts.alertLines) {
-        alerts
-          .filter(
-            (a) =>
-              a.symbol === symbol && (!chartSettings.alerts.onlyActiveAlerts || a.active)
-          )
-          .forEach((a) => {
-            priceLinesRef.current.push(
-              cs.createPriceLine({
-                price: a.price,
-                color: chartSettings.alerts.alertLineColor || '#f59e0b',
-                lineWidth: 1,
-                lineStyle: LineStyle.Dashed,
-                axisLabelVisible: true,
-                title: a.note ? `Alert: ${a.note}` : a.active ? 'Alert' : 'Triggered',
-              })
-            );
-          });
-      }
+      // Alert lines are rendered interactively on the overlay canvas + unified Price Scale stack
+      // (grey dashed line + grey price scale badge; hover reveals text pill + delete + blue dot)
 
       // Trading Positions & Orders (Trading tab)
       if (chartSettings.trading.positionsAndOrders) {
@@ -2033,11 +2110,21 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       return () => document.removeEventListener('mousedown', onDown);
     }, []);
 
-    // Redraw overlay & sync horizontal-line price scale badges whenever drawings/selection/visibility/timeframe change
+    // Redraw overlay & sync horizontal-line + alert price scale badges whenever drawings/alerts/visibility/timeframe change
     useEffect(() => {
       redrawOverlay();
       updateCountdownPos();
-    }, [drawings, selectedDrawingId, drawingsHidden, interval, redrawOverlay, updateCountdownPos]);
+    }, [
+      drawings,
+      selectedDrawingId,
+      drawingsHidden,
+      interval,
+      alerts,
+      symbol,
+      chartSettings.alerts,
+      redrawOverlay,
+      updateCountdownPos,
+    ]);
 
     // Reset floating toolbar popovers when selection changes
     useEffect(() => {
@@ -2547,6 +2634,36 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       };
 
       const handleWindowMouseMove = (e: MouseEvent) => {
+        if (draggingAlertRef.current && drawCanvasRef.current && candleSeriesRef.current) {
+          const rect = drawCanvasRef.current.getBoundingClientRect();
+          const sy = Math.max(10, Math.min(rect.height - 30, e.clientY - rect.top));
+          const nextPrice = candleSeriesRef.current.coordinateToPrice(sy);
+          if (nextPrice !== null && Number.isFinite(Number(nextPrice))) {
+            const pNum = Number(nextPrice);
+            const cur = draggingAlertRef.current;
+            draggingAlertRef.current = { id: cur.id, price: pNum, y: sy };
+            const al = alertsRef.current.find((a) => a.id === cur.id);
+            const arr = displayCandlesRef.current;
+            const refClose = arr.length ? arr[arr.length - 1].close : pNum;
+            const prec =
+              chartSettingsRef.current.symbol.precision === 'default'
+                ? getPrecision(refClose)
+                : parseInt(chartSettingsRef.current.symbol.precision, 10);
+            const condLabel =
+              al?.condition === 'above'
+                ? 'Crossing Up'
+                : al?.condition === 'below'
+                ? 'Crossing Down'
+                : 'Crossing';
+            const label = al?.note?.trim()
+              ? al.note.trim()
+              : `${symbolRef.current} ${condLabel} ${fmtPrice(pNum, prec)}`;
+            setAlertHoverInfo({ id: cur.id, y: sy, price: pNum, label });
+            redrawOverlay();
+            updateCountdownPos();
+          }
+          return;
+        }
         if (!dragEditRef.current || !drawCanvasRef.current) return;
         const rect = drawCanvasRef.current.getBoundingClientRect();
         const pt = screenToAnchor(e.clientX - rect.left, e.clientY - rect.top, Boolean(dragEditRef.current.handleKey));
@@ -2589,28 +2706,63 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         });
       };
 
+      const handleAlertDragEnd = () => {
+        if (!draggingAlertRef.current) return;
+        const finished = draggingAlertRef.current;
+        draggingAlertRef.current = null;
+        onUpdateAlertPriceRef.current?.(finished.id, finished.price);
+        redrawOverlay();
+        updateCountdownPos();
+      };
+
+      window.addEventListener('mouseup', handleAlertDragEnd);
       window.addEventListener('mouseup', handleMouseUp);
       window.addEventListener('mousemove', handleWindowMouseMove);
       return () => {
+        window.removeEventListener('mouseup', handleAlertDragEnd);
         window.removeEventListener('mouseup', handleMouseUp);
         window.removeEventListener('mousemove', handleWindowMouseMove);
       };
-    }, [applyZoomRange, finalizeDrawing, onSelectTool, onUpdateDrawing, redrawOverlay, screenToAnchor]);
+    }, [applyZoomRange, finalizeDrawing, onSelectTool, onUpdateDrawing, redrawOverlay, screenToAnchor, updateCountdownPos]);
 
-    // Capture-phase selection & dragging of existing drawings when in Cursor mode
+    // Capture-phase selection & dragging of existing drawings / alert lines when in Cursor mode
     const handleWrapperMouseDownCapture = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (e.button !== 0 || !isCursorTool(activeToolRef.current) || drawingsHiddenRef.current) return;
+      if (e.button !== 0 || !isCursorTool(activeToolRef.current)) return;
       // Ignore clicks on UI buttons/overlays inside wrapper
       const target = e.target as HTMLElement;
       if (target.closest('[data-ui-overlay="true"]')) return;
 
-      const bridge = buildCoordBridge();
       const canvas = drawCanvasRef.current;
-      if (!bridge || !canvas) return;
-
+      const series = candleSeriesRef.current;
+      if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
+
+      // Check if user grabbed an Alert line to drag its price vertically
+      if (chartSettingsRef.current.alerts.alertLines && series) {
+        const curSym = symbolRef.current;
+        const visibleAlerts = alertsRef.current.filter(
+          (a) =>
+            a.symbol === curSym &&
+            (!chartSettingsRef.current.alerts.onlyActiveAlerts || a.active)
+        );
+        for (const a of visibleAlerts) {
+          const ay = series.priceToCoordinate(a.price);
+          if (ay !== null && Math.abs(Number(ay) - sy) <= 8) {
+            e.stopPropagation();
+            e.preventDefault();
+            hoveredAlertIdRef.current = a.id;
+            draggingAlertRef.current = { id: a.id, price: a.price, y: Number(ay) };
+            redrawOverlay();
+            return;
+          }
+        }
+      }
+
+      if (drawingsHiddenRef.current) return;
+      const bridge = buildCoordBridge();
+      if (!bridge) return;
 
       const visible = drawingsRef.current.filter((d) =>
         isDrawingVisibleOnTimeframe(d, intervalRef.current)
@@ -2672,34 +2824,116 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     };
 
     const handleWrapperMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!isCursorTool(activeToolRef.current) || drawingsHiddenRef.current || dragEditRef.current) {
+      if (draggingAlertRef.current) return;
+
+      const clearAlertHoverIfNeeded = () => {
+        if (isHoveringAlertPillRef.current) return;
+        if (hoveredAlertIdRef.current !== null) {
+          hoveredAlertIdRef.current = null;
+          setAlertHoverInfo(null);
+          redrawOverlay();
+        }
+      };
+
+      if (!isCursorTool(activeToolRef.current) || dragEditRef.current) {
+        clearAlertHoverIfNeeded();
         if (hoverCursor) setHoverCursor('');
         return;
       }
+
       const target = e.target as HTMLElement;
       if (target.closest('[data-ui-overlay="true"]')) {
         if (hoveredDrawingIdRef.current !== null) {
           hoveredDrawingIdRef.current = null;
           redrawOverlay();
         }
+        clearAlertHoverIfNeeded();
+        if (hoverCursor) setHoverCursor('');
+        return;
+      }
+
+      const canvas = drawCanvasRef.current;
+      const series = candleSeriesRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+
+      // 1. Check hover proximity to Alert Lines (shows floating label pill + blue dot ONLY while hovering!)
+      let hitAlert: PriceAlert | null = null;
+      let hitAlertY = 0;
+      if (chartSettingsRef.current.alerts.alertLines && series) {
+        const placement = chartSettingsRef.current.scales.scalesPlacement;
+        const scaleW = chartRef.current?.priceScale(placement).width() || 70;
+        const inPlotX =
+          placement === 'left' ? sx >= scaleW : sx <= rect.width - scaleW;
+        if (inPlotX && sy > 6 && sy < rect.height - 28) {
+          const curSym = symbolRef.current;
+          const visibleAlerts = alertsRef.current.filter(
+            (a) =>
+              a.symbol === curSym &&
+              (!chartSettingsRef.current.alerts.onlyActiveAlerts || a.active)
+          );
+          let bestDist = 9;
+          for (const a of visibleAlerts) {
+            const ay = series.priceToCoordinate(a.price);
+            if (ay === null || !Number.isFinite(Number(ay))) continue;
+            const dist = Math.abs(Number(ay) - sy);
+            if (dist < bestDist) {
+              bestDist = dist;
+              hitAlert = a;
+              hitAlertY = Number(ay);
+            }
+          }
+        }
+      }
+
+      if (hitAlert) {
+        const arr = displayCandlesRef.current;
+        const refClose = arr.length ? arr[arr.length - 1].close : hitAlert.price;
+        const prec =
+          chartSettingsRef.current.symbol.precision === 'default'
+            ? getPrecision(refClose)
+            : parseInt(chartSettingsRef.current.symbol.precision, 10);
+        const condLabel =
+          hitAlert.condition === 'above'
+            ? 'Crossing Up'
+            : hitAlert.condition === 'below'
+            ? 'Crossing Down'
+            : 'Crossing';
+        const label = hitAlert.note?.trim()
+          ? hitAlert.note.trim()
+          : `${hitAlert.symbol} ${condLabel} ${fmtPrice(hitAlert.price, prec)}`;
+
+        if (hoveredAlertIdRef.current !== hitAlert.id) {
+          hoveredAlertIdRef.current = hitAlert.id;
+          redrawOverlay();
+        }
+        setAlertHoverInfo((prev) =>
+          prev &&
+          prev.id === hitAlert!.id &&
+          Math.abs(prev.y - hitAlertY) < 0.5 &&
+          prev.label === label
+            ? prev
+            : { id: hitAlert!.id, y: hitAlertY, price: hitAlert!.price, label }
+        );
+        if (hoverCursor !== 'ns-resize') setHoverCursor('ns-resize');
+        return;
+      } else {
+        clearAlertHoverIfNeeded();
+      }
+
+      if (drawingsHiddenRef.current) {
         if (hoverCursor) setHoverCursor('');
         return;
       }
 
       const bridge = buildCoordBridge();
-      const canvas = drawCanvasRef.current;
-      if (!bridge || !canvas) return;
-      const rect = canvas.getBoundingClientRect();
+      if (!bridge) return;
       const visible = drawingsRef.current.filter((d) =>
         isDrawingVisibleOnTimeframe(d, intervalRef.current)
       );
-      const hit = hitTestDrawings(
-        visible,
-        e.clientX - rect.left,
-        e.clientY - rect.top,
-        bridge,
-        selectedIdRef.current
-      );
+      const hit = hitTestDrawings(visible, sx, sy, bridge, selectedIdRef.current);
 
       const nextHoverId = hit ? hit.drawingId : null;
       if (hoveredDrawingIdRef.current !== nextHoverId) {
@@ -2723,6 +2957,14 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       if (hoveredDrawingIdRef.current !== null) {
         hoveredDrawingIdRef.current = null;
         redrawOverlay();
+      }
+      if (!draggingAlertRef.current) {
+        isHoveringAlertPillRef.current = false;
+        if (hoveredAlertIdRef.current !== null) {
+          hoveredAlertIdRef.current = null;
+          setAlertHoverInfo(null);
+          redrawOverlay();
+        }
       }
       if (hoverCursor) setHoverCursor('');
       if (!plusMenuOpenRef.current) {
@@ -3870,6 +4112,63 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               )}
             </div>
           ))}
+
+          {/* Hover-Only TradingView Alert Floating Pill (disappears immediately when mouse moves away) */}
+          {alertHoverInfo && (
+            <div
+              data-ui-overlay="true"
+              onMouseEnter={() => {
+                isHoveringAlertPillRef.current = true;
+              }}
+              onMouseLeave={() => {
+                isHoveringAlertPillRef.current = false;
+                if (!draggingAlertRef.current) {
+                  hoveredAlertIdRef.current = null;
+                  setAlertHoverInfo(null);
+                  redrawOverlay();
+                }
+              }}
+              onMouseDown={(e) => {
+                if ((e.target as HTMLElement).closest('button')) return;
+                e.stopPropagation();
+                e.preventDefault();
+                draggingAlertRef.current = {
+                  id: alertHoverInfo.id,
+                  price: alertHoverInfo.price,
+                  y: alertHoverInfo.y,
+                };
+                redrawOverlay();
+              }}
+              style={{
+                top: `${Math.round(alertHoverInfo.y - 11)}px`,
+                left:
+                  chartSettings.scales.scalesPlacement === 'left'
+                    ? `calc(50% + ${rightScaleWidth / 2}px)`
+                    : `calc(50% - ${rightScaleWidth / 2}px)`,
+              }}
+              className="absolute -translate-x-1/2 z-[18] h-[22px] bg-[var(--bg-surface)] border border-[#b2b5be] dark:border-[#434651] rounded-[4px] shadow-sm flex items-center overflow-hidden select-none"
+            >
+              <span className="px-2 text-[11px] font-normal text-[#787b86] dark:text-[#b2b5be] whitespace-nowrap cursor-ns-resize">
+                {alertHoverInfo.label}
+              </span>
+              {onDeleteAlert && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    isHoveringAlertPillRef.current = false;
+                    hoveredAlertIdRef.current = null;
+                    setAlertHoverInfo(null);
+                    onDeleteAlert(alertHoverInfo.id);
+                  }}
+                  title="Delete alert"
+                  className="h-full px-1.5 text-[#787b86] hover:text-[#f23645] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center cursor-pointer transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" strokeWidth={1.8} />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Top-Layer GPU-Smooth Crosshair Price Tag (zero React re-render on mousemove!) */}
           <div
