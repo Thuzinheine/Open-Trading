@@ -18,13 +18,13 @@ export interface ToolGroup {
 
 const SvgIcon: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
-  className = 'w-[20px] h-[20px]',
+  className = 'w-[24px] h-[24px]',
 }) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.3"
+    strokeWidth="1.2"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}

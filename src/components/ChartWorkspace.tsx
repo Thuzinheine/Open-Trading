@@ -280,6 +280,18 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const displayCandlesRef = useRef<CandleBar[]>([]);
     const prevSymIntervalRef = useRef<string>('');
     const prevFirstCandleTimeRef = useRef<number | null>(null);
+    const prevSeriesStateRef = useRef<{
+      key: string;
+      chartType: ChartType;
+      symbolSettings: ChartSettings['symbol'];
+      scalesPlacement: 'left' | 'right';
+      autoScale: boolean;
+      indicators: IndicatorConfig;
+      isReplay: boolean;
+      firstTime: number;
+      lastTime: number;
+      length: number;
+    } | null>(null);
     const savedZoomRef = useRef<SavedZoomState>(loadSavedZoom());
     const isApplyingZoomRef = useRef<boolean>(false);
     const zoomSaveTimerRef = useRef<number | null>(null);
@@ -1151,6 +1163,116 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
 
       const key = `${symbol}_${interval}`;
       const isSymbolOrTfSwitch = prevSymIntervalRef.current !== key;
+      const prevSnap = prevSeriesStateRef.current;
+      const lastRawCandle = effectiveCandles[effectiveCandles.length - 1];
+      const lastRawVol = effectiveVolumes[effectiveVolumes.length - 1];
+
+      // Zero-jank in-place .update() fast path for live sub-second / 1-second candle ticks
+      const isLiveTickOnly =
+        !isSymbolOrTfSwitch &&
+        prevSnap !== null &&
+        prevSnap.key === key &&
+        prevSnap.chartType === chartType &&
+        chartType !== 'heikin' &&
+        prevSnap.symbolSettings === chartSettings.symbol &&
+        prevSnap.scalesPlacement === chartSettings.scales.scalesPlacement &&
+        prevSnap.autoScale === chartSettings.scales.autoScale &&
+        prevSnap.indicators === indicators &&
+        !isReplayMode &&
+        !prevSnap.isReplay &&
+        effectiveCandles[0].time === prevSnap.firstTime &&
+        (effectiveCandles.length === prevSnap.length ||
+          effectiveCandles.length === prevSnap.length + 1) &&
+        lastRawCandle.time >= prevSnap.lastTime;
+
+      if (isLiveTickOnly) {
+        const plottedLast = chartSettings.symbol.colorBasedOnPrevClose
+          ? (() => {
+              const prevBarClose =
+                effectiveCandles.length > 1
+                  ? effectiveCandles[effectiveCandles.length - 2].close
+                  : lastRawCandle.open;
+              const up = lastRawCandle.close >= prevBarClose;
+              return {
+                ...lastRawCandle,
+                color: chartSettings.symbol.bodyEnabled
+                  ? up
+                    ? chartSettings.symbol.upColor
+                    : chartSettings.symbol.downColor
+                  : 'transparent',
+                borderColor: up
+                  ? chartSettings.symbol.borderUpColor
+                  : chartSettings.symbol.borderDownColor,
+                wickColor: up
+                  ? chartSettings.symbol.wickUpColor
+                  : chartSettings.symbol.wickDownColor,
+              };
+            })()
+          : lastRawCandle;
+
+        try {
+          cs.update(plottedLast as never);
+          const closePt = { time: lastRawCandle.time as UTCTimestamp, value: lastRawCandle.close };
+          ls.update(closePt);
+          as.update(closePt);
+          if (lastRawVol) vs.update(lastRawVol as never);
+
+          const emaFast = computeEMA(effectiveCandles, indicators.emaFast.period);
+          const emaSlow = computeEMA(effectiveCandles, indicators.emaSlow.period);
+          const ema50 = indicators.ema50.enabled
+            ? computeEMA(effectiveCandles, indicators.ema50.period)
+            : [];
+          const ema200 = indicators.ema200.enabled
+            ? computeEMA(effectiveCandles, indicators.ema200.period)
+            : [];
+          const volMa = computeVolumeSMA(effectiveVolumes, indicators.volume.maPeriod);
+          const bb = indicators.bb.enabled
+            ? computeBollingerBands(effectiveCandles, indicators.bb.period, indicators.bb.stdDev)
+            : { upper: [], middle: [], lower: [] };
+          const rsiData = indicators.rsi.enabled
+            ? computeRSI(effectiveCandles, indicators.rsi.period)
+            : [];
+
+          emaFastRef.current = emaFast;
+          emaSlowRef.current = emaSlow;
+
+          if (emaFast.length) ef.update(emaFast[emaFast.length - 1] as never);
+          if (emaSlow.length) es.update(emaSlow[emaSlow.length - 1] as never);
+          if (ema50.length) e50.update(ema50[ema50.length - 1] as never);
+          if (ema200.length) e200.update(ema200[ema200.length - 1] as never);
+          if (volMa.length) vms.update(volMa[volMa.length - 1] as never);
+          if (bb.upper.length) bbu.update(bb.upper[bb.upper.length - 1] as never);
+          if (bb.middle.length) bbm.update(bb.middle[bb.middle.length - 1] as never);
+          if (bb.lower.length) bbl.update(bb.lower[bb.lower.length - 1] as never);
+          if (rsiSeriesRef.current && indicators.rsi.enabled && rsiData.length) {
+            rsiSeriesRef.current.update(rsiData[rsiData.length - 1] as never);
+          }
+
+          setIndValues({
+            emaFast: emaFast[emaFast.length - 1]?.value,
+            emaSlow: emaSlow[emaSlow.length - 1]?.value,
+            ema50: ema50[ema50.length - 1]?.value,
+            ema200: ema200[ema200.length - 1]?.value,
+            volMa: volMa[volMa.length - 1]?.value,
+            rsi: rsiData[rsiData.length - 1]?.value,
+          });
+
+          prevSeriesStateRef.current = {
+            ...prevSnap,
+            lastTime: lastRawCandle.time,
+            length: effectiveCandles.length,
+          };
+
+          requestAnimationFrame(() => {
+            drawEmaCloud();
+            redrawOverlay();
+            updateCountdownPos();
+          });
+          return;
+        } catch {
+          // Fall through cleanly to full setData() if lightweight-charts rejects an out-of-order point
+        }
+      }
 
       const prevRange = chart.timeScale().getVisibleLogicalRange();
       let prependedCount = 0;
@@ -1303,10 +1425,23 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       }
 
       prevFirstCandleTimeRef.current = effectiveCandles[0].time;
+      prevSeriesStateRef.current = {
+        key,
+        chartType,
+        symbolSettings: chartSettings.symbol,
+        scalesPlacement: chartSettings.scales.scalesPlacement,
+        autoScale: chartSettings.scales.autoScale,
+        indicators,
+        isReplay: isReplayMode,
+        firstTime: effectiveCandles[0].time,
+        lastTime: lastRawCandle.time,
+        length: effectiveCandles.length,
+      };
     }, [
       symbol,
       interval,
       chartType,
+      isReplayMode,
       chartSettings.symbol,
       chartSettings.scales.scalesPlacement,
       chartSettings.scales.autoScale,

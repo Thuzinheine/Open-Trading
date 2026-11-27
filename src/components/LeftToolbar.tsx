@@ -139,7 +139,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 type="button"
                 onClick={() => onSelectTool(currentId)}
                 title={`${toolDef.label}${toolDef.shortcut ? ` (${toolDef.shortcut})` : ''}`}
-                className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+                className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
                   isGroupActive
                     ? isCursorGroup
                       ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
@@ -147,7 +147,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                     : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
-                {toolDef.renderIcon('w-[21px] h-[21px]')}
+                {toolDef.renderIcon('w-[27px] h-[27px]')}
               </button>
 
               {hasFlyout && (
@@ -178,9 +178,9 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           type="button"
           onClick={() => onOpenIndicators?.()}
           title="Indicators & Chart Patterns"
-          className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          className="w-[38px] h-[38px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
         >
-          <SparkleBarsIcon className="w-[21px] h-[21px]" />
+          <SparkleBarsIcon className="w-[27px] h-[27px]" />
         </button>
 
         {/* 10. Measure Tool (Diagonal Ruler) */}
@@ -188,13 +188,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           type="button"
           onClick={() => onSelectTool('measure')}
           title="Measure Price & Bars (Drag)"
-          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             activeTool === 'measure'
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          {MEASURE_TOOL.renderIcon('w-[21px] h-[21px]')}
+          {MEASURE_TOOL.renderIcon('w-[27px] h-[27px]')}
         </button>
 
         {/* 11. Zoom In Box Tool + Zoom Out */}
@@ -203,13 +203,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
             type="button"
             onClick={() => onSelectTool('zoom_in')}
             title="Zoom In (Drag Box on Chart)"
-            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               activeTool === 'zoom_in'
                 ? 'bg-[var(--bg-active)] text-[var(--accent)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            {ZOOM_TOOL.renderIcon('w-[21px] h-[21px]')}
+            {ZOOM_TOOL.renderIcon('w-[27px] h-[27px]')}
           </button>
           <button
             type="button"
@@ -238,13 +238,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 ? 'Weak Magnet: ON (Snaps near candle OHLC)'
                 : 'Strong Magnet: ON (Always snaps to candle OHLC)'
             }
-            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               magnetMode !== 'off'
                 ? 'bg-[#131722] dark:bg-[var(--accent)] text-white'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <MagnetTvIcon className="w-[21px] h-[21px]" />
+            <MagnetTvIcon className="w-[27px] h-[27px]" />
           </button>
           <button
             type="button"
@@ -272,13 +272,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               ? 'Stay in Drawing Mode: ON (Keep tool active after drawing)'
               : 'Stay in Drawing Mode: OFF (Return to cursor after drawing)'
           }
-          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             stayInDrawingMode
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          <StayInDrawingIcon className="w-[21px] h-[21px]" />
+          <StayInDrawingIcon className="w-[27px] h-[27px]" />
         </button>
 
         {/* 14. Lock All Drawings (Open/Closed TradingView Padlock) */}
@@ -290,13 +290,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               ? 'All Drawings Locked (Click to unlock dragging/editing)'
               : 'Lock All Drawing Tools'
           }
-          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             lockDrawings
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          <PadlockTvIcon className="w-[21px] h-[21px]" locked={lockDrawings} />
+          <PadlockTvIcon className="w-[27px] h-[27px]" locked={lockDrawings} />
         </button>
 
         {/* 15. Hide All Drawings (Eye + Mini Paintbrush) */}
@@ -304,16 +304,16 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           type="button"
           onClick={onToggleHideDrawings}
           title={drawingsHidden ? 'Show All Drawings' : 'Hide All Drawings'}
-          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             drawingsHidden
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
           {drawingsHidden ? (
-            <EyeOff className="w-[18px] h-[18px]" strokeWidth={1.35} />
+            <EyeOff className="w-[22px] h-[22px]" strokeWidth={1.3} />
           ) : (
-            <EyeBrushIcon className="w-[21px] h-[21px]" />
+            <EyeBrushIcon className="w-[27px] h-[27px]" />
           )}
         </button>
 
@@ -333,9 +333,9 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 ? 'Delete Selected Drawing (Del)'
                 : `Remove All Drawings (${drawingsCount})`
             }
-            className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] transition-colors cursor-pointer"
+            className="w-[38px] h-[38px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] transition-colors cursor-pointer"
           >
-            <TrashMinimalIcon className="w-[21px] h-[21px]" />
+            <TrashMinimalIcon className="w-[27px] h-[27px]" />
           </button>
           {drawingsCount > 0 && (
             <button
@@ -390,7 +390,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className="shrink-0 opacity-90">
-                      {tool.renderIcon('w-[17px] h-[17px]')}
+                      {tool.renderIcon('w-[22px] h-[22px]')}
                     </span>
                     <span className="text-[13px] truncate">{tool.label}</span>
                   </div>

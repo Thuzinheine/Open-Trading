@@ -170,7 +170,7 @@ export const SparkleBarsIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.3"
+    strokeWidth="1.2"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
@@ -187,7 +187,7 @@ export const MagnetTvIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[20p
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.3"
+    strokeWidth="1.2"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
@@ -204,7 +204,7 @@ export const StayInDrawingIcon: React.FC<IconProps> = ({ className = 'w-[20px] h
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.3"
+    strokeWidth="1.2"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
@@ -226,7 +226,7 @@ export const PadlockTvIcon: React.FC<IconProps & { locked?: boolean }> = ({
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.3"
+    strokeWidth="1.2"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
@@ -248,7 +248,7 @@ export const EyeBrushIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[20p
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.3"
+    strokeWidth="1.2"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
@@ -266,7 +266,7 @@ export const TrashMinimalIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.3"
+    strokeWidth="1.2"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}

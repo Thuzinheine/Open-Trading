@@ -7,7 +7,139 @@ export const REST_MIRRORS = [
   'https://api3.binance.com/api/v3',
 ];
 
-export const WS_BASE = 'wss://stream.binance.com:9443';
+export const WS_MIRRORS = [
+  'wss://data-stream.binance.vision',
+  'wss://stream.binance.com:443',
+  'wss://stream.binance.com:9443',
+];
+
+export const WS_BASE = WS_MIRRORS[0];
+
+export interface ManagedBinanceSocket {
+  close: () => void;
+}
+
+/**
+ * Resilient Binance WebSocket connection that automatically fails over across
+ * WS_MIRRORS (starting with global data-stream.binance.vision), detects hung
+ * CONNECTING states via a watchdog, and reconnects automatically on drop.
+ */
+export function createBinanceSocket(
+  path: string,
+  handlers: {
+    onOpen?: () => void;
+    onMessage: (data: string) => void;
+    onError?: () => void;
+    onClose?: () => void;
+  }
+): ManagedBinanceSocket {
+  let closed = false;
+  let mirrorIdx = 0;
+  let ws: WebSocket | null = null;
+  let reconnectTimer: number | null = null;
+  let connectWatchdog: number | null = null;
+
+  const clearTimers = () => {
+    if (reconnectTimer !== null) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (connectWatchdog !== null) {
+      window.clearTimeout(connectWatchdog);
+      connectWatchdog = null;
+    }
+  };
+
+  const connect = () => {
+    if (closed) return;
+    clearTimers();
+
+    const base = WS_MIRRORS[mirrorIdx % WS_MIRRORS.length];
+    let opened = false;
+
+    try {
+      ws = new WebSocket(`${base}${path}`);
+    } catch {
+      mirrorIdx = (mirrorIdx + 1) % WS_MIRRORS.length;
+      handlers.onError?.();
+      reconnectTimer = window.setTimeout(connect, 1200);
+      return;
+    }
+
+    const currentWs = ws;
+
+    // Watchdog in case a blocked/firewalled endpoint stalls in CONNECTING
+    connectWatchdog = window.setTimeout(() => {
+      if (!closed && !opened && currentWs.readyState !== WebSocket.OPEN) {
+        try {
+          currentWs.close();
+        } catch {}
+      }
+    }, 4200);
+
+    currentWs.onopen = () => {
+      if (closed) {
+        try {
+          currentWs.close();
+        } catch {}
+        return;
+      }
+      opened = true;
+      if (connectWatchdog !== null) {
+        window.clearTimeout(connectWatchdog);
+        connectWatchdog = null;
+      }
+      handlers.onOpen?.();
+    };
+
+    currentWs.onmessage = (evt) => {
+      if (closed) return;
+      if (typeof evt.data === 'string') {
+        handlers.onMessage(evt.data);
+      }
+    };
+
+    currentWs.onerror = () => {
+      if (closed) return;
+      handlers.onError?.();
+    };
+
+    currentWs.onclose = () => {
+      if (closed) return;
+      if (connectWatchdog !== null) {
+        window.clearTimeout(connectWatchdog);
+        connectWatchdog = null;
+      }
+      handlers.onClose?.();
+      if (!opened) {
+        // Rotate to next mirror quickly if this endpoint couldn't connect
+        mirrorIdx = (mirrorIdx + 1) % WS_MIRRORS.length;
+        reconnectTimer = window.setTimeout(connect, 900);
+      } else {
+        reconnectTimer = window.setTimeout(connect, 1800);
+      }
+    };
+  };
+
+  connect();
+
+  return {
+    close: () => {
+      closed = true;
+      clearTimers();
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onerror = null;
+        ws.onclose = null;
+        try {
+          ws.close();
+        } catch {}
+        ws = null;
+      }
+    },
+  };
+}
 
 export const DEFAULT_WATCHLIST: WatchlistItem[] = [
   { sym: 'BTCUSDT', name: 'Bitcoin / TetherUS', color: '#f7931a', letter: '₿' },
@@ -43,11 +175,14 @@ export const INTERVAL_SECONDS: Record<Timeframe, number> = {
   '1w': 604800,
 };
 
-export async function fetchBinance<T = unknown>(pathWithQuery: string): Promise<T> {
+export async function fetchBinance<T = unknown>(
+  pathWithQuery: string,
+  options?: { fresh?: boolean }
+): Promise<T> {
   let lastErr: unknown = null;
   for (const base of REST_MIRRORS) {
     try {
-      const res = await fetch(`${base}${pathWithQuery}`);
+      const res = await fetch(`${base}${pathWithQuery}`, options?.fresh ? { cache: 'no-store' } : undefined);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as T;
     } catch (err) {

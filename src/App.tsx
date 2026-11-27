@@ -22,7 +22,14 @@ import {
   WatchlistItem,
   WatchlistViewPrefs,
 } from './types/trading';
-import { fetchBinance, fmtPrice, parseKlines, playAlertChime, WS_BASE } from './utils/binance';
+import {
+  createBinanceSocket,
+  fetchBinance,
+  fmtPrice,
+  ManagedBinanceSocket,
+  parseKlines,
+  playAlertChime,
+} from './utils/binance';
 import {
   DEFAULT_PAPER_ACCOUNT,
   loadActiveWatchlistId,
@@ -167,8 +174,16 @@ export default function App() {
   const loadGenRef = useRef<number>(0);
   const isFetchingHistoryRef = useRef<boolean>(false);
   const hasMoreHistoryRef = useRef<boolean>(true);
-  const klineWsRef = useRef<WebSocket | null>(null);
-  const tickerWsRef = useRef<WebSocket | null>(null);
+  const klineWsRef = useRef<ManagedBinanceSocket | null>(null);
+  const tickerWsRef = useRef<ManagedBinanceSocket | null>(null);
+  const lastChartTickMsRef = useRef<number>(0);
+  const lastWatchlistTickMsRef = useRef<number>(0);
+  const pendingTradePriceRef = useRef<{ sym: string; price: number } | null>(null);
+  const tradeFlushTimerRef = useRef<number | null>(null);
+  const chartPollBusyRef = useRef<boolean>(false);
+  const tickerPollBusyRef = useRef<boolean>(false);
+  const candleCloseMsRef = useRef<number>(0);
+  candleCloseMsRef.current = candleCloseMs;
   const candlesRef = useRef<CandleBar[]>([]);
   candlesRef.current = candles;
   const currentSymRef = useRef(currentSymbol);
@@ -411,88 +426,258 @@ export default function App() {
     }
   }, []);
 
-  // Connect live Kline WebSocket
+  // Sync a sub-second live trade tick into both the active candle and tickerMap in lockstep
+  const applyLiveTradePrice = useCallback(
+    (sym: string, price: number) => {
+      if (!Number.isFinite(price) || price <= 0) return;
+
+      setTickerMap((prev) => {
+        const cur = prev[sym];
+        if (!cur) {
+          return {
+            ...prev,
+            [sym]: {
+              symbol: sym,
+              last: price,
+              chg: 0,
+              pct: 0,
+              high: price,
+              low: price,
+              vol: 0,
+              baseVol: 0,
+              prevLast: price,
+            },
+          };
+        }
+        const open24h = cur.last - cur.chg;
+        const chg = open24h > 0 ? price - open24h : cur.chg;
+        const pct = open24h > 0 ? (chg / open24h) * 100 : cur.pct;
+        return {
+          ...prev,
+          [sym]: {
+            ...cur,
+            last: price,
+            chg,
+            pct,
+            high: cur.high > 0 ? Math.max(cur.high, price) : price,
+            low: cur.low > 0 ? Math.min(cur.low, price) : price,
+            prevLast: price !== cur.last ? cur.last : cur.prevLast,
+          },
+        };
+      });
+
+      evaluatePriceTriggers(sym, price);
+
+      if (isReplayRef.current || sym !== currentSymRef.current) return;
+
+      let candleDirectionChanged = false;
+      let isBullNow = true;
+
+      setCandles((prev) => {
+        if (!prev.length) return prev;
+        const last = prev[prev.length - 1];
+        const nextHigh = Math.max(last.high, price);
+        const nextLow = Math.min(last.low, price);
+        if (last.close === price && last.high === nextHigh && last.low === nextLow) {
+          return prev;
+        }
+        const wasBull = last.close >= last.open;
+        isBullNow = price >= last.open;
+        candleDirectionChanged = wasBull !== isBullNow;
+        const next = prev.slice();
+        next[next.length - 1] = {
+          ...last,
+          high: nextHigh,
+          low: nextLow,
+          close: price,
+        };
+        return next;
+      });
+
+      if (candleDirectionChanged) {
+        setVolumes((prev) => {
+          if (!prev.length) return prev;
+          const next = prev.slice();
+          const lastV = next[next.length - 1];
+          next[next.length - 1] = {
+            ...lastV,
+            color: isBullNow ? 'rgba(8, 153, 129, 0.48)' : 'rgba(242, 54, 69, 0.48)',
+          };
+          return next;
+        });
+      }
+    },
+    [evaluatePriceTriggers]
+  );
+
+  // Merge authoritative kline bars (from @kline WS or 1s REST heartbeat)
+  const applyKlineBars = useCallback(
+    (sym: string, incomingCandles: CandleBar[], incomingVolumes: VolumeBar[], closeTimeMs: number) => {
+      if (!incomingCandles.length || sym !== currentSymRef.current) return;
+      const latestBar = incomingCandles[incomingCandles.length - 1];
+      if (closeTimeMs > 0) setCandleCloseMs(closeTimeMs);
+
+      setTickerMap((prev) => {
+        const cur = prev[sym];
+        if (!cur) return prev;
+        const price = latestBar.close;
+        const open24h = cur.last - cur.chg;
+        const chg = open24h > 0 ? price - open24h : cur.chg;
+        const pct = open24h > 0 ? (chg / open24h) * 100 : cur.pct;
+        return {
+          ...prev,
+          [sym]: {
+            ...cur,
+            last: price,
+            chg,
+            pct,
+            high: cur.high > 0 ? Math.max(cur.high, price) : price,
+            low: cur.low > 0 ? Math.min(cur.low, price) : price,
+            prevLast: price !== cur.last ? cur.last : cur.prevLast,
+          },
+        };
+      });
+
+      evaluatePriceTriggers(sym, latestBar.close);
+
+      if (isReplayRef.current) return;
+
+      setCandles((prev) => {
+        if (!prev.length) return incomingCandles;
+        const next = prev.slice();
+        let mutated = false;
+        for (const bar of incomingCandles) {
+          const last = next[next.length - 1];
+          if (bar.time < last.time) continue;
+          if (bar.time === last.time) {
+            if (
+              last.open !== bar.open ||
+              last.high !== bar.high ||
+              last.low !== bar.low ||
+              last.close !== bar.close
+            ) {
+              next[next.length - 1] = bar;
+              mutated = true;
+            }
+          } else {
+            next.push(bar);
+            mutated = true;
+          }
+        }
+        return mutated ? next : prev;
+      });
+
+      setVolumes((prev) => {
+        if (!prev.length) return incomingVolumes;
+        const next = prev.slice();
+        let mutated = false;
+        for (const volBar of incomingVolumes) {
+          const last = next[next.length - 1];
+          if (volBar.time < last.time) continue;
+          if (volBar.time === last.time) {
+            if (last.value !== volBar.value || last.color !== volBar.color) {
+              next[next.length - 1] = volBar;
+              mutated = true;
+            }
+          } else {
+            next.push(volBar);
+            mutated = true;
+          }
+        }
+        return mutated ? next : prev;
+      });
+    },
+    [evaluatePriceTriggers]
+  );
+
+  // Connect live Combined Kline + AggTrade WebSocket (sub-second live price & candle updates)
   const connectKlineSocket = useCallback(
     (sym: string, tf: Timeframe, expectedGen: number) => {
       if (klineWsRef.current) {
-        klineWsRef.current.onclose = null;
         klineWsRef.current.close();
+        klineWsRef.current = null;
       }
+      if (tradeFlushTimerRef.current !== null) {
+        window.clearTimeout(tradeFlushTimerRef.current);
+        tradeFlushTimerRef.current = null;
+      }
+      pendingTradePriceRef.current = null;
+
       setWsStatus('connecting');
-      const ws = new WebSocket(`${WS_BASE}/ws/${sym.toLowerCase()}@kline_${tf}`);
-      klineWsRef.current = ws;
+      const lower = sym.toLowerCase();
+      const sock = createBinanceSocket(
+        `/stream?streams=${lower}@kline_${tf}/${lower}@aggTrade`,
+        {
+          onOpen: () => {
+            if (expectedGen !== loadGenRef.current) return;
+            setWsStatus('live');
+          },
+          onMessage: (raw) => {
+            if (expectedGen !== loadGenRef.current) return;
+            try {
+              const payload = JSON.parse(raw);
+              const stream: string = payload.stream || '';
+              const msg = payload.data || payload;
 
-      ws.onopen = () => {
-        if (expectedGen !== loadGenRef.current) return;
-        setWsStatus('live');
-      };
+              if (stream.includes('@aggTrade') || msg.e === 'aggTrade') {
+                if (msg.s !== currentSymRef.current) return;
+                const tradePrice = parseFloat(msg.p);
+                if (!Number.isFinite(tradePrice)) return;
+                lastChartTickMsRef.current = Date.now();
+                setWsStatus('live');
 
-      ws.onmessage = (evt) => {
-        if (expectedGen !== loadGenRef.current) return;
-        try {
-          const msg = JSON.parse(evt.data);
-          if (!msg.k || msg.s !== currentSymRef.current) return;
-          const k = msg.k;
-          const tSec = Math.floor(k.t / 1000);
-          const bar: CandleBar = {
-            time: tSec,
-            open: parseFloat(k.o),
-            high: parseFloat(k.h),
-            low: parseFloat(k.l),
-            close: parseFloat(k.c),
-          };
-          const volBar: VolumeBar = {
-            time: tSec,
-            value: parseFloat(k.v),
-            color: bar.close >= bar.open ? 'rgba(8, 153, 129, 0.48)' : 'rgba(242, 54, 69, 0.48)',
-          };
+                // Coalesce rapid trade bursts smoothly (~5 updates/sec max)
+                pendingTradePriceRef.current = { sym: msg.s, price: tradePrice };
+                if (tradeFlushTimerRef.current === null) {
+                  tradeFlushTimerRef.current = window.setTimeout(() => {
+                    tradeFlushTimerRef.current = null;
+                    if (expectedGen !== loadGenRef.current) return;
+                    const pending = pendingTradePriceRef.current;
+                    pendingTradePriceRef.current = null;
+                    if (pending) {
+                      applyLiveTradePrice(pending.sym, pending.price);
+                    }
+                  }, 180);
+                }
+                return;
+              }
 
-          setCandleCloseMs(k.T);
-          evaluatePriceTriggers(sym, bar.close);
+              if (msg.k && msg.s === currentSymRef.current) {
+                const k = msg.k;
+                lastChartTickMsRef.current = Date.now();
+                setWsStatus('live');
+                const tSec = Math.floor(k.t / 1000);
+                const bar: CandleBar = {
+                  time: tSec,
+                  open: parseFloat(k.o),
+                  high: parseFloat(k.h),
+                  low: parseFloat(k.l),
+                  close: parseFloat(k.c),
+                };
+                const volBar: VolumeBar = {
+                  time: tSec,
+                  value: parseFloat(k.v),
+                  color:
+                    bar.close >= bar.open
+                      ? 'rgba(8, 153, 129, 0.48)'
+                      : 'rgba(242, 54, 69, 0.48)',
+                };
+                applyKlineBars(sym, [bar], [volBar], k.T);
+              }
+            } catch {}
+          },
+          onError: () => {
+            if (expectedGen === loadGenRef.current) setWsStatus('connecting');
+          },
+          onClose: () => {
+            if (expectedGen === loadGenRef.current) setWsStatus('connecting');
+          },
+        }
+      );
 
-          if (isReplayRef.current) return;
-
-          setCandles((prev) => {
-            if (!prev.length) return [bar];
-            const last = prev[prev.length - 1];
-            if (tSec < last.time) return prev;
-            if (last.time === tSec) {
-              const next = prev.slice();
-              next[next.length - 1] = bar;
-              return next;
-            }
-            return [...prev, bar];
-          });
-
-          setVolumes((prev) => {
-            if (!prev.length) return [volBar];
-            const last = prev[prev.length - 1];
-            if (tSec < last.time) return prev;
-            if (last.time === tSec) {
-              const next = prev.slice();
-              next[next.length - 1] = volBar;
-              return next;
-            }
-            return [...prev, volBar];
-          });
-        } catch {}
-      };
-
-      ws.onerror = () => {
-        if (expectedGen === loadGenRef.current) setWsStatus('error');
-      };
-
-      ws.onclose = () => {
-        if (expectedGen !== loadGenRef.current) return;
-        setWsStatus('connecting');
-        setTimeout(() => {
-          if (expectedGen === loadGenRef.current) {
-            connectKlineSocket(sym, tf, expectedGen);
-          }
-        }, 2500);
-      };
+      klineWsRef.current = sock;
     },
-    [evaluatePriceTriggers]
+    [applyKlineBars, applyLiveTradePrice]
   );
 
   // Load Symbol + Timeframe history
@@ -502,7 +687,6 @@ export default function App() {
       const myGen = loadGenRef.current;
 
       if (klineWsRef.current) {
-        klineWsRef.current.onclose = null;
         klineWsRef.current.close();
         klineWsRef.current = null;
       }
@@ -518,7 +702,8 @@ export default function App() {
 
       try {
         const raw = await fetchBinance<unknown[][]>(
-          `/klines?symbol=${sym}&interval=${tf}&limit=1000`
+          `/klines?symbol=${sym}&interval=${tf}&limit=1000`,
+          { fresh: true }
         );
         if (myGen !== loadGenRef.current) return;
         if (!Array.isArray(raw) || raw.length === 0) throw new Error('Empty klines');
@@ -527,6 +712,7 @@ export default function App() {
         setCandles(parsed.candles);
         setVolumes(parsed.volumes);
         setCandleCloseMs(Number(raw[raw.length - 1][6]));
+        lastChartTickMsRef.current = Date.now();
         setLoadingText(null);
 
         const lastClose = parsed.candles[parsed.candles.length - 1].close;
@@ -555,8 +741,10 @@ export default function App() {
     loadSymbolChart('BTCUSDT', '1d');
     return () => {
       if (klineWsRef.current) {
-        klineWsRef.current.onclose = null;
         klineWsRef.current.close();
+      }
+      if (tradeFlushTimerRef.current !== null) {
+        window.clearTimeout(tradeFlushTimerRef.current);
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -578,15 +766,20 @@ export default function App() {
 
   const fetchWatchlistTickers = useCallback(async () => {
     const syms = watchlistSymbolsKey.split(',').filter(Boolean);
-    if (!syms.length) return;
+    if (!syms.length || tickerPollBusyRef.current) return;
+    tickerPollBusyRef.current = true;
     try {
       const param = encodeURIComponent(JSON.stringify(syms));
-      const data = await fetchBinance<RawTicker24h[]>(`/ticker/24hr?symbols=${param}`);
+      const data = await fetchBinance<RawTicker24h[]>(`/ticker/24hr?symbols=${param}`, {
+        fresh: true,
+      });
       if (Array.isArray(data)) {
+        lastWatchlistTickMsRef.current = Date.now();
         setTickerMap((prev) => {
           const next = { ...prev };
           data.forEach((t) => {
             const last = parseFloat(t.lastPrice);
+            const old = prev[t.symbol];
             next[t.symbol] = {
               symbol: t.symbol,
               last,
@@ -596,62 +789,116 @@ export default function App() {
               low: parseFloat(t.lowPrice),
               vol: parseFloat(t.quoteVolume),
               baseVol: parseFloat(t.volume),
-              prevLast: prev[t.symbol]?.last,
+              prevLast: old && old.last !== last ? old.last : old?.prevLast,
             };
           });
           return next;
         });
       }
-    } catch {}
+    } catch {
+      // ignore transient network blip
+    } finally {
+      tickerPollBusyRef.current = false;
+    }
   }, [watchlistSymbolsKey]);
 
   useEffect(() => {
     fetchWatchlistTickers();
 
     if (tickerWsRef.current) {
-      tickerWsRef.current.onclose = null;
       tickerWsRef.current.close();
+      tickerWsRef.current = null;
     }
     const syms = watchlistSymbolsKey.split(',').filter(Boolean);
     if (!syms.length) return;
 
     const streams = syms.map((s) => `${s.toLowerCase()}@ticker`).join('/');
-    const ws = new WebSocket(`${WS_BASE}/stream?streams=${streams}`);
-    tickerWsRef.current = ws;
+    const sock = createBinanceSocket(`/stream?streams=${streams}`, {
+      onMessage: (raw) => {
+        try {
+          const payload = JSON.parse(raw);
+          const d = payload.data;
+          if (!d || !d.s) return;
+          const last = parseFloat(d.c);
+          if (!Number.isFinite(last)) return;
+          lastWatchlistTickMsRef.current = Date.now();
 
-    ws.onmessage = (evt) => {
-      try {
-        const payload = JSON.parse(evt.data);
-        const d = payload.data;
-        if (!d || !d.s) return;
-        const last = parseFloat(d.c);
+          setTickerMap((prev) => {
+            const old = prev[d.s];
+            return {
+              ...prev,
+              [d.s]: {
+                symbol: d.s,
+                last,
+                chg: parseFloat(d.p),
+                pct: parseFloat(d.P),
+                high: parseFloat(d.h),
+                low: parseFloat(d.l),
+                vol: parseFloat(d.q),
+                baseVol: parseFloat(d.v),
+                prevLast: old && old.last !== last ? old.last : old?.prevLast,
+              },
+            };
+          });
 
-        setTickerMap((prev) => ({
-          ...prev,
-          [d.s]: {
-            symbol: d.s,
-            last,
-            chg: parseFloat(d.p),
-            pct: parseFloat(d.P),
-            high: parseFloat(d.h),
-            low: parseFloat(d.l),
-            vol: parseFloat(d.q),
-            baseVol: parseFloat(d.v),
-            prevLast: prev[d.s]?.last,
-          },
-        }));
-
-        if (d.s !== currentSymRef.current) {
-          evaluatePriceTriggers(d.s, last);
-        }
-      } catch {}
-    };
+          if (d.s !== currentSymRef.current) {
+            evaluatePriceTriggers(d.s, last);
+          } else if (Date.now() - lastChartTickMsRef.current > 900) {
+            applyLiveTradePrice(d.s, last);
+          }
+        } catch {}
+      },
+    });
+    tickerWsRef.current = sock;
 
     return () => {
-      ws.onclose = null;
-      ws.close();
+      sock.close();
     };
-  }, [watchlistSymbolsKey, fetchWatchlistTickers, evaluatePriceTriggers]);
+  }, [watchlistSymbolsKey, fetchWatchlistTickers, evaluatePriceTriggers, applyLiveTradePrice]);
+
+  // Guaranteed 1-second live REST heartbeat fallback (keeps candles & watchlist ticking every second even if WS stalls or is blocked)
+  useEffect(() => {
+    const id = window.setInterval(async () => {
+      if (document.hidden) return;
+      const now = Date.now();
+
+      // 1. Active chart live candle heartbeat if WS hasn't pushed in >1.6s or bar just rolled over
+      const barRolledOver = candleCloseMsRef.current > 0 && now >= candleCloseMsRef.current + 350;
+      if (
+        candlesRef.current.length > 0 &&
+        !chartPollBusyRef.current &&
+        (now - lastChartTickMsRef.current > 1600 || barRolledOver)
+      ) {
+        const sym = currentSymRef.current;
+        const tf = intervalRef.current;
+        const gen = loadGenRef.current;
+        chartPollBusyRef.current = true;
+        try {
+          const raw = await fetchBinance<unknown[][]>(
+            `/klines?symbol=${sym}&interval=${tf}&limit=2`,
+            { fresh: true }
+          );
+          if (gen === loadGenRef.current && Array.isArray(raw) && raw.length > 0) {
+            const parsed = parseKlines(raw);
+            lastChartTickMsRef.current = Date.now();
+            setWsStatus('live');
+            applyKlineBars(sym, parsed.candles, parsed.volumes, Number(raw[raw.length - 1][6]));
+          }
+        } catch {
+          // ignore transient poll error
+        } finally {
+          chartPollBusyRef.current = false;
+        }
+      }
+
+      // 2. Watchlist live price heartbeat if ticker WS hasn't pushed in >2.0s
+      if (now - lastWatchlistTickMsRef.current > 2000) {
+        fetchWatchlistTickers();
+      }
+    }, 1000);
+
+    return () => window.clearInterval(id);
+  }, [applyKlineBars, fetchWatchlistTickers]);
 
   // Bar Replay auto-step timer
   useEffect(() => {
@@ -1210,6 +1457,13 @@ export default function App() {
   };
 
   const currentPrice = candles[candles.length - 1]?.close || tickerMap[currentSymbol]?.last || 0;
+
+  // Live browser tab title synced with active symbol & real-time price
+  useEffect(() => {
+    if (currentPrice > 0) {
+      document.title = `${currentSymbol} ${fmtPrice(currentPrice)} · TradePulse`;
+    }
+  }, [currentSymbol, currentPrice]);
 
   const avgVolume30d = useMemo(() => {
     if (!volumes.length) return 0;

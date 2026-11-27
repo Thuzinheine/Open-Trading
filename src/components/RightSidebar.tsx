@@ -42,7 +42,7 @@ import {
   WatchlistItem,
   WatchlistViewPrefs,
 } from '../types/trading';
-import { fmtCompact, fmtPrice, WS_BASE } from '../utils/binance';
+import { createBinanceSocket, fmtCompact, fmtPrice } from '../utils/binance';
 import { CoinLogo, FLAG_COLORS, FlagRibbon, getCoinSector, SplitPrice } from './CoinLogo';
 import {
   AppsCircleIcon,
@@ -230,50 +230,50 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     setTrades([]);
 
     const lower = currentSymbol.toLowerCase();
-    const ws = new WebSocket(`${WS_BASE}/stream?streams=${lower}@depth20@100ms/${lower}@trade`);
+    const sock = createBinanceSocket(`/stream?streams=${lower}@depth20@100ms/${lower}@trade`, {
+      onMessage: (raw) => {
+        try {
+          const msg = JSON.parse(raw);
+          const stream: string = msg.stream || '';
+          const d = msg.data;
+          if (!d) return;
 
-    ws.onmessage = (evt) => {
-      try {
-        const msg = JSON.parse(evt.data);
-        const stream: string = msg.stream || '';
-        const d = msg.data;
-        if (!d) return;
+          if (stream.includes('@depth20')) {
+            const rawAsks: [string, string][] = (d.asks || []).slice(0, 12);
+            const rawBids: [string, string][] = (d.bids || []).slice(0, 12);
 
-        if (stream.includes('@depth20')) {
-          const rawAsks: [string, string][] = (d.asks || []).slice(0, 12);
-          const rawBids: [string, string][] = (d.bids || []).slice(0, 12);
+            let askCum = 0;
+            const parsedAsks: OrderBookLevel[] = rawAsks.map(([p, q]) => {
+              const price = parseFloat(p);
+              const qty = parseFloat(q);
+              askCum += qty;
+              return { price, qty, total: askCum };
+            });
+            setAsks(parsedAsks.reverse());
 
-          let askCum = 0;
-          const parsedAsks: OrderBookLevel[] = rawAsks.map(([p, q]) => {
-            const price = parseFloat(p);
-            const qty = parseFloat(q);
-            askCum += qty;
-            return { price, qty, total: askCum };
-          });
-          setAsks(parsedAsks.reverse());
+            let bidCum = 0;
+            const parsedBids: OrderBookLevel[] = rawBids.map(([p, q]) => {
+              const price = parseFloat(p);
+              const qty = parseFloat(q);
+              bidCum += qty;
+              return { price, qty, total: bidCum };
+            });
+            setBids(parsedBids);
+          } else if (stream.includes('@trade')) {
+            const trade: MarketTrade = {
+              id: d.t,
+              price: parseFloat(d.p),
+              qty: parseFloat(d.q),
+              time: d.T,
+              isBuyerMaker: Boolean(d.m),
+            };
+            setTrades((prev) => [trade, ...prev].slice(0, 40));
+          }
+        } catch {}
+      },
+    });
 
-          let bidCum = 0;
-          const parsedBids: OrderBookLevel[] = rawBids.map(([p, q]) => {
-            const price = parseFloat(p);
-            const qty = parseFloat(q);
-            bidCum += qty;
-            return { price, qty, total: bidCum };
-          });
-          setBids(parsedBids);
-        } else if (stream.includes('@trade')) {
-          const trade: MarketTrade = {
-            id: d.t,
-            price: parseFloat(d.p),
-            qty: parseFloat(d.q),
-            time: d.T,
-            isBuyerMaker: Boolean(d.m),
-          };
-          setTrades((prev) => [trade, ...prev].slice(0, 40));
-        }
-      } catch {}
-    };
-
-    return () => ws.close();
+    return () => sock.close();
   }, [visible, activeTab, currentSymbol]);
 
   const handleSort = (key: SortKey) => {
