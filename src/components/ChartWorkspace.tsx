@@ -368,12 +368,39 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       emaSlow?: number;
       ema50?: number;
       ema200?: number;
+      bbUpper?: number;
+      bbMid?: number;
+      bbLower?: number;
+      volMa?: number;
+      rsi?: number;
+    }>({});
+    const indValuesRef = useRef<{
+      emaFast?: number;
+      emaSlow?: number;
+      ema50?: number;
+      ema200?: number;
+      bbUpper?: number;
+      bbMid?: number;
+      bbLower?: number;
       volMa?: number;
       rsi?: number;
     }>({});
     const [clockStr, setClockStr] = useState('--:--:--');
     const [countdownStr, setCountdownStr] = useState('');
-    const [countdownTop, setCountdownTop] = useState<number | null>(null);
+    const countdownStrRef = useRef('');
+    countdownStrRef.current = countdownStr;
+    const [scaleBadges, setScaleBadges] = useState<
+      Array<{
+        id: string;
+        kind: 'price' | 'indicator';
+        text: string;
+        subText?: string;
+        bgColor: string;
+        top: number;
+        height: number;
+      }>
+    >([]);
+    const scaleBadgesSigRef = useRef('');
     const [showScrollToRecent, setShowScrollToRecent] = useState(false);
     const [rightScaleWidth, setRightScaleWidth] = useState(66);
     const [crosshairPlus, setCrosshairPlus] = useState<{ y: number; price: number } | null>(null);
@@ -637,20 +664,176 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     }, [buildCoordBridge]);
 
     const updateCountdownPos = useCallback(() => {
+      const chart = chartRef.current;
       const series = candleSeriesRef.current;
       const canvas = drawCanvasRef.current;
       const arr = displayCandlesRef.current;
-      if (!series || !canvas || !arr.length || isReplayMode) {
-        setCountdownTop(null);
+      if (!chart || !series || !canvas || !arr.length) {
+        if (scaleBadgesSigRef.current !== '') {
+          scaleBadgesSigRef.current = '';
+          setScaleBadges([]);
+        }
         return;
       }
-      const lastClose = arr[arr.length - 1].close;
-      const y = series.priceToCoordinate(lastClose);
-      if (y === null) {
-        setCountdownTop(null);
-        return;
+
+      const csCfg = chartSettingsRef.current;
+      const sc = csCfg.scales;
+      const symCfg = csCfg.symbol;
+      const ind = indicatorsRef.current;
+      const vals = indValuesRef.current;
+
+      const scaleW = chart.priceScale(sc.scalesPlacement).width();
+      if (scaleW > 0) setRightScaleWidth(scaleW);
+
+      const lastBar = arr[arr.length - 1];
+      const prevBar = arr.length > 1 ? arr[arr.length - 2] : lastBar;
+      const prec =
+        symCfg.precision === 'default'
+          ? getPrecision(lastBar.close)
+          : parseInt(symCfg.precision, 10);
+
+      const maxBottom = Math.max(40, canvas.height - 27);
+      const pillH = 18;
+      const halfPill = 9;
+
+      type RawBadge = {
+        id: string;
+        kind: 'price' | 'indicator';
+        text: string;
+        subText?: string;
+        bgColor: string;
+        idealY: number;
+        top: number;
+        height: number;
+      };
+
+      // 1. Unified Current Price (+ Candle Time) badge
+      let priceBadge: RawBadge | null = null;
+      const rawPriceY = series.priceToCoordinate(lastBar.close);
+      if (sc.symbolLabel !== 'hidden' && rawPriceY !== null && Number.isFinite(Number(rawPriceY))) {
+        const py = Number(rawPriceY);
+        const isBull = symCfg.colorBasedOnPrevClose
+          ? lastBar.close >= prevBar.close
+          : lastBar.close >= lastBar.open;
+        const priceBg = isBull ? symCfg.upColor : symCfg.downColor;
+        const cdText =
+          !isReplayMode && sc.countdownToBarClose ? countdownStrRef.current : '';
+        const h = cdText ? 31 : pillH;
+        const top = Math.max(2, Math.min(maxBottom - h, Math.round(py - halfPill)));
+        priceBadge = {
+          id: 'current_price',
+          kind: 'price',
+          text: fmtPrice(lastBar.close, prec),
+          subText: cdText || undefined,
+          bgColor: priceBg,
+          idealY: py,
+          top,
+          height: h,
+        };
       }
-      setCountdownTop(Math.max(4, Math.min(canvas.height - 46, Number(y) + 10)));
+
+      // 2. Active overlay indicator badges (EMA10, EMA20, EMA50, EMA200, BB)
+      const indRaw: RawBadge[] = [];
+      if (sc.indicatorsLabel !== 'hidden') {
+        const pushInd = (id: string, enabled: boolean, value: number | undefined, color: string) => {
+          if (!enabled || value === undefined || !Number.isFinite(value)) return;
+          const y = series.priceToCoordinate(value);
+          if (y === null || !Number.isFinite(Number(y))) return;
+          const iy = Number(y);
+          if (iy < -20 || iy > maxBottom + 20) return;
+          indRaw.push({
+            id,
+            kind: 'indicator',
+            text: fmtPrice(value, prec),
+            bgColor: color,
+            idealY: iy,
+            top: Math.max(2, Math.min(maxBottom - pillH, Math.round(iy - halfPill))),
+            height: pillH,
+          });
+        };
+
+        pushInd('ema_fast', ind.emaFast.enabled, vals.emaFast, ind.emaFast.color);
+        pushInd('ema_slow', ind.emaSlow.enabled, vals.emaSlow, ind.emaSlow.color);
+        pushInd('ema_50', ind.ema50.enabled, vals.ema50, ind.ema50.color);
+        pushInd('ema_200', ind.ema200.enabled, vals.ema200, ind.ema200.color);
+        pushInd('bb_upper', ind.bb.enabled, vals.bbUpper, ind.bb.color);
+        pushInd('bb_mid', ind.bb.enabled, vals.bbMid, ind.bb.color);
+        pushInd('bb_lower', ind.bb.enabled, vals.bbLower, ind.bb.color);
+      }
+
+      // 3. Collision-free stacking matching TradingView's Price Scale layout
+      const resolved: RawBadge[] = [];
+      if (sc.noOverlappingLabels) {
+        if (priceBadge) {
+          const above = indRaw
+            .filter((b) => b.idealY < priceBadge!.idealY)
+            .sort((a, b) => b.idealY - a.idealY);
+          const below = indRaw
+            .filter((b) => b.idealY >= priceBadge!.idealY)
+            .sort((a, b) => a.idealY - b.idealY);
+
+          // Stack indicators above Current Price upward from priceBadge.top
+          let upCursor = priceBadge.top;
+          for (const item of above) {
+            item.top = Math.min(Math.round(item.idealY - halfPill), upCursor - item.height);
+            upCursor = item.top;
+          }
+          // Keep top-most above badges inside viewport
+          above.reverse();
+          let minTop = 2;
+          for (const item of above) {
+            if (item.top < minTop) item.top = minTop;
+            minTop = item.top + item.height;
+          }
+
+          // Stack indicators below Current Price downward from bottom of Price+Countdown box
+          let downCursor = priceBadge.top + priceBadge.height;
+          for (const item of below) {
+            item.top = Math.max(Math.round(item.idealY - halfPill), downCursor);
+            downCursor = item.top + item.height;
+          }
+          // Keep bottom-most below badges above time axis
+          let maxBot = maxBottom;
+          for (let i = below.length - 1; i >= 0; i--) {
+            const item = below[i];
+            if (item.top + item.height > maxBot) {
+              item.top = Math.max(priceBadge.top + priceBadge.height, maxBot - item.height);
+            }
+            maxBot = item.top;
+          }
+
+          resolved.push(...above, priceBadge, ...below);
+        } else {
+          const sorted = [...indRaw].sort((a, b) => a.idealY - b.idealY);
+          let cursor = 2;
+          for (const item of sorted) {
+            item.top = Math.max(Math.round(item.idealY - halfPill), cursor);
+            cursor = item.top + item.height;
+          }
+          resolved.push(...sorted);
+        }
+      } else {
+        if (priceBadge) resolved.push(priceBadge);
+        resolved.push(...indRaw);
+      }
+
+      const nextBadges = resolved.map((b) => ({
+        id: b.id,
+        kind: b.kind,
+        text: b.text,
+        subText: b.subText,
+        bgColor: b.bgColor,
+        top: b.top,
+        height: b.height,
+      }));
+
+      const sig = nextBadges
+        .map((b) => `${b.id}:${b.text}:${b.subText || ''}:${b.bgColor}:${b.top}:${b.height}`)
+        .join('|');
+      if (sig !== scaleBadgesSigRef.current) {
+        scaleBadgesSigRef.current = sig;
+        setScaleBadges(nextBadges);
+      }
     }, [isReplayMode]);
 
     // Initialize Main Chart once
@@ -676,6 +859,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         rightPriceScale: {
           borderColor: isDarkMode ? '#2a2e39' : '#e0e3eb',
           autoScale: true,
+          minimumWidth: 66,
           scaleMargins: { top: 0.08, bottom: 0.22 },
         },
         timeScale: {
@@ -696,12 +880,14 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         wickUpColor: isDarkMode ? '#d1d4dc' : '#131722',
         wickDownColor: isDarkMode ? '#d1d4dc' : '#131722',
         borderVisible: true,
+        lastValueVisible: false,
       });
 
       const lineSeries = chart.addLineSeries({
         color: '#2962ff',
         lineWidth: 2,
         visible: false,
+        lastValueVisible: false,
       });
 
       const areaSeries = chart.addAreaSeries({
@@ -710,6 +896,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         bottomColor: 'rgba(41, 98, 255, 0.01)',
         lineWidth: 2,
         visible: false,
+        lastValueVisible: false,
       });
 
       const volumeSeries = chart.addHistogramSeries({
@@ -729,22 +916,26 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         color: '#f23645',
         lineWidth: 1,
         priceLineVisible: false,
+        lastValueVisible: false,
       });
       const emaSlowSeries = chart.addLineSeries({
         color: '#2962ff',
         lineWidth: 1,
         priceLineVisible: false,
+        lastValueVisible: false,
       });
       const ema50Series = chart.addLineSeries({
         color: '#f59e0b',
         lineWidth: 1,
         priceLineVisible: false,
+        lastValueVisible: false,
         visible: false,
       });
       const ema200Series = chart.addLineSeries({
         color: '#8b5cf6',
         lineWidth: 2,
         priceLineVisible: false,
+        lastValueVisible: false,
         visible: false,
       });
 
@@ -752,6 +943,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         color: '#06b6d4',
         lineWidth: 1,
         priceLineVisible: false,
+        lastValueVisible: false,
         visible: false,
       });
       const bbMidSeries = chart.addLineSeries({
@@ -759,12 +951,14 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         priceLineVisible: false,
+        lastValueVisible: false,
         visible: false,
       });
       const bbLowerSeries = chart.addLineSeries({
         color: '#06b6d4',
         lineWidth: 1,
         priceLineVisible: false,
+        lastValueVisible: false,
         visible: false,
       });
 
@@ -867,7 +1061,30 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       });
       if (wrapperRef.current) observer.observe(wrapperRef.current);
 
+      // Keep custom price scale badges & overlays synced during Y-axis drag / wheel / double-click
+      let scaleSyncRaf = 0;
+      const scheduleScaleSync = () => {
+        if (scaleSyncRaf) return;
+        scaleSyncRaf = requestAnimationFrame(() => {
+          scaleSyncRaf = 0;
+          drawEmaCloud();
+          redrawOverlay();
+          updateCountdownPos();
+        });
+      };
+      const onPointerDrag = (e: PointerEvent) => {
+        if (e.buttons !== 0) scheduleScaleSync();
+      };
+      const wrapEl = wrapperRef.current;
+      wrapEl?.addEventListener('pointermove', onPointerDrag, { passive: true });
+      wrapEl?.addEventListener('wheel', scheduleScaleSync, { passive: true });
+      wrapEl?.addEventListener('dblclick', scheduleScaleSync, { passive: true });
+
       return () => {
+        if (scaleSyncRaf) cancelAnimationFrame(scaleSyncRaf);
+        wrapEl?.removeEventListener('pointermove', onPointerDrag);
+        wrapEl?.removeEventListener('wheel', scheduleScaleSync);
+        wrapEl?.removeEventListener('dblclick', scheduleScaleSync);
         if (zoomSaveTimerRef.current) window.clearTimeout(zoomSaveTimerRef.current);
         observer.disconnect();
         chart.remove();
@@ -1050,6 +1267,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           borderColor: borderCol,
           autoScale: sc.autoScale,
           invertScale: sc.invertScale,
+          minimumWidth: 66,
           mode: priceMode,
           scaleMargins: { top: marginTop, bottom: marginBottom },
         },
@@ -1058,6 +1276,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           borderColor: borderCol,
           autoScale: sc.autoScale,
           invertScale: sc.invertScale,
+          minimumWidth: 66,
           mode: priceMode,
           scaleMargins: { top: marginTop, bottom: marginBottom },
         },
@@ -1085,9 +1304,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       }
 
       const showCandle = chartType === 'candles' || chartType === 'hollow' || chartType === 'heikin';
-      const showSymVal = sc.symbolLabel !== 'hidden';
       const showSymLine = sc.symbolLabel === 'value_line';
-      const showIndVal = sc.indicatorsLabel !== 'hidden';
 
       const defaultBorder = isDarkMode ? symCfg.upColor : symCfg.borderUpColor;
       const defaultBorderDown = isDarkMode ? symCfg.downColor : symCfg.borderDownColor;
@@ -1108,7 +1325,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         wickVisible: symCfg.wickEnabled,
         wickUpColor: chartType === 'hollow' ? '#089981' : defaultWickUp,
         wickDownColor: chartType === 'hollow' ? '#f23645' : defaultWickDown,
-        lastValueVisible: showSymVal,
+        lastValueVisible: false,
         priceLineVisible: showSymLine,
       });
 
@@ -1116,14 +1333,14 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         priceScaleId: targetScaleId,
         visible: chartType === 'line',
         color: symCfg.upColor,
-        lastValueVisible: showSymVal,
+        lastValueVisible: false,
         priceLineVisible: showSymLine,
       });
       as.applyOptions({
         priceScaleId: targetScaleId,
         visible: chartType === 'area',
         lineColor: symCfg.upColor,
-        lastValueVisible: showSymVal,
+        lastValueVisible: false,
         priceLineVisible: showSymLine,
       });
 
@@ -1136,11 +1353,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         bbMidSeriesRef.current,
         bbLowerSeriesRef.current,
       ].forEach((s) => {
-        s?.applyOptions({ priceScaleId: targetScaleId, lastValueVisible: showIndVal });
+        s?.applyOptions({ priceScaleId: targetScaleId, lastValueVisible: false });
       });
 
       drawEmaCloud();
-    }, [chartSettings, isDarkMode, chartType, scaleMode, activeTool, symbol, interval, isReplayMode, drawEmaCloud]);
+      requestAnimationFrame(() => updateCountdownPos());
+    }, [chartSettings, isDarkMode, chartType, scaleMode, activeTool, symbol, interval, isReplayMode, drawEmaCloud, updateCountdownPos]);
 
     // Update all series data & STRICTLY PRESERVE USER'S LAST ZOOM across coin & timeframe switches
     useEffect(() => {
@@ -1250,14 +1468,19 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             rsiSeriesRef.current.update(rsiData[rsiData.length - 1] as never);
           }
 
-          setIndValues({
+          const nextIndVals = {
             emaFast: emaFast[emaFast.length - 1]?.value,
             emaSlow: emaSlow[emaSlow.length - 1]?.value,
             ema50: ema50[ema50.length - 1]?.value,
             ema200: ema200[ema200.length - 1]?.value,
+            bbUpper: bb.upper[bb.upper.length - 1]?.value,
+            bbMid: bb.middle[bb.middle.length - 1]?.value,
+            bbLower: bb.lower[bb.lower.length - 1]?.value,
             volMa: volMa[volMa.length - 1]?.value,
             rsi: rsiData[rsiData.length - 1]?.value,
-          });
+          };
+          indValuesRef.current = nextIndVals;
+          setIndValues(nextIndVals);
 
           prevSeriesStateRef.current = {
             ...prevSnap,
@@ -1373,14 +1596,19 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         rsiSeriesRef.current.setData(rsiData as never);
       }
 
-      setIndValues({
+      const nextIndVals = {
         emaFast: emaFast[emaFast.length - 1]?.value,
         emaSlow: emaSlow[emaSlow.length - 1]?.value,
         ema50: ema50[ema50.length - 1]?.value,
         ema200: ema200[ema200.length - 1]?.value,
+        bbUpper: bb.upper[bb.upper.length - 1]?.value,
+        bbMid: bb.middle[bb.middle.length - 1]?.value,
+        bbLower: bb.lower[bb.lower.length - 1]?.value,
         volMa: volMa[volMa.length - 1]?.value,
         rsi: rsiData[rsiData.length - 1]?.value,
-      });
+      };
+      indValuesRef.current = nextIndVals;
+      setIndValues(nextIndVals);
 
       if (isSymbolOrTfSwitch) {
         prevSymIntervalRef.current = key;
@@ -1718,14 +1946,29 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         }
 
         if (candleCloseMs > now && !isReplayMode && chartSettings.scales.countdownToBarClose) {
-          const secLeft = Math.floor((candleCloseMs - now) / 1000);
-          const h = String(Math.floor(secLeft / 3600)).padStart(2, '0');
-          const m = String(Math.floor((secLeft % 3600) / 60)).padStart(2, '0');
-          const s = String(secLeft % 60).padStart(2, '0');
-          setCountdownStr(`${h}:${m}:${s}`);
+          const secLeft = Math.max(0, Math.floor((candleCloseMs - now) / 1000));
+          let nextCd = '';
+          if (secLeft >= 86400) {
+            const days = Math.floor(secLeft / 86400);
+            const hrs = String(Math.floor((secLeft % 86400) / 3600)).padStart(2, '0');
+            nextCd = `${days}d ${hrs}h`;
+          } else if (secLeft >= 3600) {
+            const h = String(Math.floor(secLeft / 3600)).padStart(2, '0');
+            const m = String(Math.floor((secLeft % 3600) / 60)).padStart(2, '0');
+            const s = String(secLeft % 60).padStart(2, '0');
+            nextCd = `${h}:${m}:${s}`;
+          } else {
+            const m = String(Math.floor(secLeft / 60)).padStart(2, '0');
+            const s = String(secLeft % 60).padStart(2, '0');
+            nextCd = `${m}:${s}`;
+          }
+          countdownStrRef.current = nextCd;
+          setCountdownStr(nextCd);
         } else {
+          countdownStrRef.current = '';
           setCountdownStr('');
         }
+        updateCountdownPos();
       };
       tick();
       const id = setInterval(tick, 1000);
@@ -1736,6 +1979,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       chartSettings.symbol.timezone,
       chartSettings.scales.timeHoursFormat,
       chartSettings.scales.countdownToBarClose,
+      updateCountdownPos,
     ]);
 
     const prevMarginRightRef = useRef<number>(chartSettings.canvas.marginRightBars);
@@ -3441,39 +3685,78 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             </form>
           )}
 
-          {/* Candle Close Countdown Tag (Flush below live price badge) */}
-          {countdownTop !== null &&
-            countdownStr &&
-            !isReplayMode &&
-            chartSettings.scales.countdownToBarClose && (
+          {/* Unified Collision-Free TradingView Price Scale Badges (EMA10, EMA20, Current Price + Candle Time) */}
+          {scaleBadges.map((badge) => (
+            <div
+              key={badge.id}
+              className={`absolute ${
+                chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
+              } z-[9] pointer-events-none text-white select-none rounded-[2px] flex flex-col justify-center overflow-hidden`}
+              style={{
+                top: `${badge.top}px`,
+                height: `${badge.height}px`,
+                width: `${Math.max(58, rightScaleWidth - 1)}px`,
+                backgroundColor: badge.bgColor,
+                paddingLeft: '7px',
+                paddingRight: '3px',
+                fontSize: `${chartSettings.canvas.scaleFontSize || 11}px`,
+                fontFamily:
+                  '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              <span className="font-semibold leading-[15px] whitespace-nowrap tracking-[-0.01em]">
+                {badge.text}
+              </span>
+              {badge.subText && (
+                <span className="font-medium leading-[13px] whitespace-nowrap tracking-[-0.01em] opacity-95">
+                  {badge.subText}
+                </span>
+              )}
+            </div>
+          ))}
+
+          {/* Top-Layer Crosshair Price Tag (floats cleanly above EMA & Current Price badges when hovering) */}
+          {crosshairPlus && activeTool !== 'arrow' && crosshairPlus.y > 10 && (() => {
+            const lastBarClose = effectiveCandles[effectiveCandles.length - 1]?.close ?? crosshairPlus.price;
+            const prec =
+              chartSettings.symbol.precision === 'default'
+                ? getPrecision(lastBarClose)
+                : parseInt(chartSettings.symbol.precision, 10);
+            return (
               <div
                 className={`absolute ${
                   chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
-                } z-10 ${
-                  (effectiveCandles[effectiveCandles.length - 1]?.close ?? 0) >=
-                  (effectiveCandles[effectiveCandles.length - 1]?.open ?? 0)
-                    ? 'bg-[#089981]'
-                    : 'bg-[#f23645]'
-                } text-white text-[10.5px] font-mono-num font-normal px-1.5 py-[1px] rounded-b-[2px] pointer-events-none leading-tight text-left`}
+                } z-[15] pointer-events-none bg-[#131722] dark:bg-[#2a2e39] text-white select-none rounded-[2px] flex items-center overflow-hidden`}
                 style={{
-                  top: `${countdownTop - 2}px`,
-                  minWidth: `${Math.max(54, rightScaleWidth - 2)}px`,
+                  top: `${Math.round(crosshairPlus.y - 9.5)}px`,
+                  height: '19px',
+                  width: `${Math.max(58, rightScaleWidth - 1)}px`,
+                  paddingLeft: '7px',
+                  paddingRight: '3px',
+                  fontSize: `${chartSettings.canvas.scaleFontSize || 11}px`,
+                  fontFamily:
+                    '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
+                  fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                {countdownStr}
+                <span className="font-semibold leading-none whitespace-nowrap tracking-[-0.01em]">
+                  {fmtPrice(crosshairPlus.price, prec)}
+                </span>
               </div>
-            )}
+            );
+          })()}
 
           {/* Price-Scale Crosshair (+) Quick Action Button (Screenshot 5) */}
-          {chartSettings.scales.plusButton && crosshairPlus && crosshairPlus.y > 14 && (
+          {chartSettings.scales.plusButton && crosshairPlus && activeTool !== 'arrow' && crosshairPlus.y > 14 && (
             <div
               ref={plusMenuRef}
               data-ui-overlay="true"
               style={{
-                top: `${crosshairPlus.y - 11}px`,
+                top: `${Math.round(crosshairPlus.y - 9.5)}px`,
                 ...(chartSettings.scales.scalesPlacement === 'right'
-                  ? { right: `${rightScaleWidth + 1}px` }
-                  : { left: `${rightScaleWidth + 1}px` }),
+                  ? { right: `${rightScaleWidth}px` }
+                  : { left: `${rightScaleWidth}px` }),
               }}
               className="absolute z-20"
             >
@@ -3484,7 +3767,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                   setPlusMenuOpen((v) => !v);
                 }}
                 title={`Quick actions at ${fmtPrice(crosshairPlus.price)}`}
-                className="w-[24px] h-[22px] rounded-xs bg-[#131722] dark:bg-[#2a2e39] hover:bg-[var(--accent)] text-white inline-flex items-center justify-center shadow-sm cursor-pointer transition-colors"
+                className="w-[22px] h-[19px] rounded-[2px] bg-[#131722] dark:bg-[#2a2e39] hover:bg-[var(--accent)] text-white inline-flex items-center justify-center shadow-sm cursor-pointer transition-colors"
               >
                 <PlusCircle className="w-3.5 h-3.5" strokeWidth={2} />
               </button>
