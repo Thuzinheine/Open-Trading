@@ -3,8 +3,9 @@
 
 :root {
   --bg-app: #ffffff;
+  --bg-gutter: #e0e3eb;
   --bg-surface: #ffffff;
-  --bg-elevated: #f8f9fd;
+  --bg-elevated: #f0f3fa;
   --bg-hover: #f0f3fa;
   --bg-active: #e3effd;
   --border: #e0e3eb;
@@ -19,8 +20,9 @@
 
 .dark {
   --bg-app: #131722;
-  --bg-surface: #1e222d;
-  --bg-elevated: #171b26;
+  --bg-gutter: #2a2e39;
+  --bg-surface: #131722;
+  --bg-elevated: #1e222d;
   --bg-hover: #2a2e39;
   --bg-active: rgba(41, 98, 255, 0.2);
   --border: #2a2e39;

@@ -32,7 +32,7 @@ const KEYS = {
   FAVORITE_TOOLS: 'tp_fav_tools_v1',
   TOOL_PREFS: 'tp_tool_prefs_v1',
   TEMPLATES: 'tp_drawing_templates_v1',
-  CHART_SETTINGS: 'tp_chart_settings_v1',
+  CHART_SETTINGS: 'tp_chart_settings_v2',
   CHART_TEMPLATES: 'tp_chart_templates_v1',
 };
 
@@ -365,9 +365,9 @@ export const DEFAULT_CHART_SETTINGS: ChartSettings = {
     backgroundType: 'solid',
     backgroundColor: '',
     backgroundColor2: '#f0f3fa',
-    vertGridEnabled: true,
+    vertGridEnabled: false,
     vertGridColor: '',
-    horzGridEnabled: true,
+    horzGridEnabled: false,
     horzGridColor: '',
     crosshairColor: '#9598a1',
     crosshairStyle: 'dashed',

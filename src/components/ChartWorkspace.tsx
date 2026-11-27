@@ -44,7 +44,9 @@ import {
   ArrowUpToLine,
   ArrowDownToLine,
   Check,
+  Calendar,
 } from 'lucide-react';
+import { HexSettingsIcon } from './TradingViewIcons';
 import {
   AnchorPoint,
   CandleBar,
@@ -320,6 +322,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const [scaleMode, setScaleMode] = useState<ScaleMode>('auto');
     const [scaleMenuOpen, setScaleMenuOpen] = useState(false);
     const scaleMenuRef = useRef<HTMLDivElement>(null);
+    const [goToDateOpen, setGoToDateOpen] = useState(false);
+    const [goToDateVal, setGoToDateVal] = useState<string>(() =>
+      new Date().toISOString().slice(0, 10)
+    );
+    const [activeDateRange, setActiveDateRange] = useState<string>('');
     const [indExpanded, setIndExpanded] = useState(true);
     const [hoverBar, setHoverBar] = useState<CandleBar | null>(null);
     const [hoverCursor, setHoverCursor] = useState<string>('');
@@ -2354,31 +2361,29 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                 (chartSettings.statusLine.ohlcValues ||
                   chartSettings.statusLine.barChangeValues ||
                   chartSettings.statusLine.volume) && (
-                  <div
-                    className={`inline-flex items-center gap-2 font-mono-num text-[11px] ${barColorClass}`}
-                  >
+                  <div className="inline-flex items-center gap-1.5 font-mono-num text-[11.5px] text-[var(--text-main)]">
                     {chartSettings.statusLine.ohlcValues && (
                       <>
                         <span>
-                          <b className="text-[var(--text-muted)] font-normal mr-0.5">O</b>
+                          <span className="font-normal">O</span>
                           {fmtPrice(legendBar.open)}
                         </span>
                         <span>
-                          <b className="text-[var(--text-muted)] font-normal mr-0.5">H</b>
+                          <span className="font-normal">H</span>
                           {fmtPrice(legendBar.high)}
                         </span>
                         <span>
-                          <b className="text-[var(--text-muted)] font-normal mr-0.5">L</b>
+                          <span className="font-normal">L</span>
                           {fmtPrice(legendBar.low)}
                         </span>
                         <span>
-                          <b className="text-[var(--text-muted)] font-normal mr-0.5">C</b>
+                          <span className="font-normal">C</span>
                           {fmtPrice(legendBar.close)}
                         </span>
                       </>
                     )}
                     {chartSettings.statusLine.barChangeValues && (
-                      <span className="font-semibold">
+                      <span className="font-normal text-[var(--text-main)]">
                         {barDiff >= 0 ? '+' : ''}
                         {fmtPrice(barDiff)} ({barDiff >= 0 ? '+' : ''}
                         {barPct.toFixed(2)}%)
@@ -2479,8 +2484,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                       {indicators.volume.enabled && (
                         <div
                           style={bgStyle}
-                          className="group/ind inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors"
+                          className="group/ind relative inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-[4px] border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors"
                         >
+                          {/* TradingView dark hover tooltip */}
+                          <span className="pointer-events-none opacity-0 group-hover/ind:opacity-100 transition-opacity absolute -top-7 left-0 px-2 py-0.5 rounded bg-[#131722] text-white text-[11px] font-medium whitespace-nowrap shadow-md z-30">
+                            Volume · {baseCoin}
+                          </span>
                           {chartSettings.statusLine.indTitles && (
                             <span className="text-[var(--text-main)]">
                               Vol · {baseCoin}
@@ -2492,7 +2501,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                             </span>
                           )}
                           {chartSettings.statusLine.indValues && (
-                            <span className="font-mono-num text-[11.5px] inline-flex items-center gap-1.5">
+                            <span className="font-mono-num text-[11.5px] inline-flex items-center gap-1.5 group-hover/ind:hidden">
                               {legendVol !== undefined && (
                                 <span className="text-[#089981]">{fmtCompact(legendVol)}</span>
                               )}
@@ -2501,8 +2510,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                               )}
                             </span>
                           )}
-                          {/* Hover Action Controls (Screenshot 2: Eye, Gear, Trash) */}
-                          <span className="hidden group-hover/ind:inline-flex items-center gap-0.5 ml-1 pl-1 border-l border-[var(--border)]/70">
+                          {/* Hover Action Controls (Exact Screenshot 5: Eye, Hex Gear, Trash, ...) */}
+                          <span className="hidden group-hover/ind:inline-flex items-center gap-0.5 ml-0.5">
                             {onUpdateIndicators && (
                               <button
                                 type="button"
@@ -2515,7 +2524,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 title="Hide Volume"
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
                               >
-                                <Eye className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                <Eye className="w-3.5 h-3.5" strokeWidth={1.6} />
                               </button>
                             )}
                             {onOpenIndicators && (
@@ -2525,7 +2534,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 title="Indicator Settings"
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
                               >
-                                <Settings className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                <HexSettingsIcon className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {onUpdateIndicators && (
@@ -2540,7 +2549,17 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 title="Remove Volume"
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] hover:text-[var(--down)] cursor-pointer"
                               >
-                                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.6} />
+                              </button>
+                            )}
+                            {onOpenIndicators && (
+                              <button
+                                type="button"
+                                onClick={onOpenIndicators}
+                                title="More Indicator Options"
+                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                              >
+                                <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.7} />
                               </button>
                             )}
                           </span>
@@ -2620,7 +2639,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 title="EMA Settings"
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
                               >
-                                <Settings className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                <HexSettingsIcon className="w-3.5 h-3.5" />
                               </button>
                             )}
                             {onUpdateIndicators && (
@@ -2638,7 +2657,17 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 title="Remove EMAs"
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] hover:text-[var(--down)] cursor-pointer"
                               >
-                                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                <Trash2 className="w-3.5 h-3.5" strokeWidth={1.6} />
+                              </button>
+                            )}
+                            {onOpenIndicators && (
+                              <button
+                                type="button"
+                                onClick={onOpenIndicators}
+                                title="More Options"
+                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                              >
+                                <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.7} />
                               </button>
                             )}
                           </span>
@@ -3271,16 +3300,19 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             </form>
           )}
 
-          {/* Candle Close Countdown Tag */}
+          {/* Candle Close Countdown Tag (Flush below live price badge) */}
           {countdownTop !== null &&
             countdownStr &&
             !isReplayMode &&
             chartSettings.scales.countdownToBarClose && (
               <div
                 className={`absolute ${
-                  chartSettings.scales.scalesPlacement === 'left' ? 'left-1' : 'right-1'
-                } z-10 bg-[var(--accent)] text-white text-[10px] font-mono-num font-semibold px-1.5 py-0.5 rounded-xs pointer-events-none`}
-                style={{ top: `${countdownTop}px` }}
+                  chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
+                } z-10 bg-[#2962ff] text-white text-[10px] font-mono-num font-semibold px-1.5 py-[1px] rounded-b-[2px] pointer-events-none leading-tight text-center`}
+                style={{
+                  top: `${countdownTop - 2}px`,
+                  minWidth: `${Math.max(54, rightScaleWidth - 2)}px`,
+                }}
               >
                 {countdownStr}
               </div>
@@ -3473,6 +3505,194 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               </button>
             </div>
           )}
+          {/* Bottom-Right Price Scale Corner Hexagon Gear Icon (Exact Match to Screenshot 4 & Full-Screen) */}
+          <div
+            ref={scaleMenuRef}
+            data-ui-overlay="true"
+            style={{
+              width: `${Math.max(54, rightScaleWidth)}px`,
+              ...(chartSettings.scales.scalesPlacement === 'left' ? { left: 0 } : { right: 0 }),
+            }}
+            className="absolute bottom-0 h-[26px] z-20 flex items-center justify-center bg-[var(--bg-app)]"
+          >
+            <button
+              type="button"
+              onClick={() => setScaleMenuOpen((v) => !v)}
+              title="Price Scale Settings"
+              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors cursor-pointer ${
+                scaleMenuOpen
+                  ? 'bg-[var(--bg-hover)] text-[var(--accent)]'
+                  : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+              }`}
+            >
+              <HexSettingsIcon className="w-[15px] h-[15px]" />
+            </button>
+
+            {scaleMenuOpen && (
+              <div
+                className={`absolute ${
+                  chartSettings.scales.scalesPlacement === 'left' ? 'left-1' : 'right-1'
+                } bottom-7 w-64 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-50 text-xs text-[var(--text-main)]`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !chartSettings.scales.autoScale;
+                    onUpdateChartSettings({
+                      ...chartSettings,
+                      scales: { ...chartSettings.scales, autoScale: next },
+                    });
+                    setScaleMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
+                >
+                  <span className="w-4 inline-flex justify-center">
+                    {chartSettings.scales.autoScale && <Check className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="flex-1">Auto (fits data to screen)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateChartSettings({
+                      ...chartSettings,
+                      scales: {
+                        ...chartSettings.scales,
+                        lockPriceToBarRatio: !chartSettings.scales.lockPriceToBarRatio,
+                      },
+                    });
+                    setScaleMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
+                >
+                  <span className="w-4 inline-flex justify-center">
+                    {chartSettings.scales.lockPriceToBarRatio && <Check className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="flex-1">Lock price to bar ratio</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateChartSettings({
+                      ...chartSettings,
+                      scales: {
+                        ...chartSettings.scales,
+                        invertScale: !chartSettings.scales.invertScale,
+                      },
+                    });
+                    setScaleMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
+                >
+                  <span className="w-4 inline-flex justify-center">
+                    {chartSettings.scales.invertScale && <Check className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="flex-1">Invert scale</span>
+                  <span className="text-[11px] text-[var(--text-muted)]">Alt + I</span>
+                </button>
+
+                <div className="border-t border-[var(--border)] my-1" />
+
+                {(
+                  [
+                    { id: 'regular', label: 'Regular', shortcut: '' },
+                    { id: 'pct', label: 'Percent', shortcut: 'Alt + P' },
+                    { id: 'indexed100', label: 'Indexed to 100', shortcut: '' },
+                    { id: 'log', label: 'Logarithmic', shortcut: 'Alt + L' },
+                  ] as const
+                ).map((item) => {
+                  const active =
+                    item.id === 'regular'
+                      ? scaleMode === 'regular' || scaleMode === 'auto'
+                      : scaleMode === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        applyScaleMode(item.id);
+                        setScaleMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
+                    >
+                      <span className="w-4 inline-flex justify-center">
+                        {active && <Check className="w-3.5 h-3.5" />}
+                      </span>
+                      <span className="flex-1">{item.label}</span>
+                      {item.shortcut && (
+                        <span className="text-[11px] text-[var(--text-muted)]">
+                          {item.shortcut}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                <div className="border-t border-[var(--border)] my-1" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateChartSettings({
+                      ...chartSettings,
+                      scales: {
+                        ...chartSettings.scales,
+                        scalesPlacement:
+                          chartSettings.scales.scalesPlacement === 'left' ? 'right' : 'left',
+                      },
+                    });
+                    setScaleMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
+                >
+                  <span className="w-4" />
+                  <span className="flex-1">
+                    {chartSettings.scales.scalesPlacement === 'left'
+                      ? 'Move scale to right'
+                      : 'Move scale to left'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onUpdateChartSettings({
+                      ...chartSettings,
+                      scales: {
+                        ...chartSettings.scales,
+                        plusButton: !chartSettings.scales.plusButton,
+                      },
+                    });
+                    setScaleMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
+                >
+                  <span className="w-4 inline-flex justify-center">
+                    {chartSettings.scales.plusButton && <Check className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="flex-1">Plus button</span>
+                </button>
+
+                <div className="border-t border-[var(--border)] my-1" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScaleMenuOpen(false);
+                    onOpenChartSettings('scales');
+                  }}
+                  className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 font-medium cursor-pointer"
+                >
+                  <span className="w-4 inline-flex justify-center">
+                    <HexSettingsIcon className="w-3.5 h-3.5" />
+                  </span>
+                  <span>More settings...</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Synchronized RSI Sub-Pane */}
@@ -3491,235 +3711,155 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           </div>
         )}
 
-        {/* Bottom Chart Control Strip */}
-        <div className="h-[29px] border-t border-[var(--border)] bg-[var(--bg-surface)] flex items-center justify-between px-3 text-xs shrink-0 select-none">
-          <div className="flex items-center gap-1">
-            {[50, 110, 220, 500].map((bars) => (
+        {/* Bottom Date Range & UTC Clock Strip (Exact TradingView Full-Screen Match) */}
+        <div className="h-[34px] border-t border-[var(--border)] bg-[var(--bg-surface)] flex items-center justify-between px-2.5 text-xs shrink-0 select-none relative">
+          <div className="flex items-center gap-0.5">
+            {(
+              [
+                { id: '1D', days: 1 },
+                { id: '5D', days: 5 },
+                { id: '1M', days: 30 },
+                { id: '3M', days: 90 },
+                { id: '6M', days: 180 },
+                { id: 'YTD', days: -1 },
+                { id: '1Y', days: 365 },
+                { id: '5Y', days: 1825 },
+                { id: 'All', days: 0 },
+              ] as const
+            ).map((rng) => (
               <button
-                key={bars}
-                onClick={() => applyZoomRange(bars)}
-                className="px-1.5 py-0.5 rounded text-[11px] font-mono-num font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-main)] cursor-pointer"
+                key={rng.id}
+                type="button"
+                onClick={() => {
+                  setActiveDateRange(rng.id);
+                  if (rng.days === 0) {
+                    chartRef.current?.timeScale().fitContent();
+                    return;
+                  }
+                  const secPerBar: Record<string, number> = {
+                    '1m': 60,
+                    '5m': 300,
+                    '15m': 900,
+                    '30m': 1800,
+                    '1h': 3600,
+                    '4h': 14400,
+                    '1d': 86400,
+                    '1w': 604800,
+                  };
+                  const barSec = secPerBar[interval] || 86400;
+                  let spanDays: number = rng.days;
+                  if (rng.id === 'YTD') {
+                    const now = new Date();
+                    const jan1 = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+                    spanDays = Math.max(1, Math.ceil((now.getTime() - jan1.getTime()) / 86400000));
+                  }
+                  const targetBars = Math.max(12, Math.round((spanDays * 86400) / barSec));
+                  applyZoomRange(targetBars);
+                }}
+                className={`px-2 py-1 rounded-[4px] text-[12px] transition-colors cursor-pointer ${
+                  activeDateRange === rng.id
+                    ? 'bg-[var(--bg-hover)] text-[var(--accent)] font-semibold'
+                    : 'text-[var(--text-main)] font-normal hover:bg-[var(--bg-hover)]'
+                }`}
               >
-                {bars}
+                {rng.id}
               </button>
             ))}
-            <button
-              onClick={() => chartRef.current?.timeScale().fitContent()}
-              className="px-1.5 py-0.5 rounded text-[11px] font-semibold text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-main)] cursor-pointer"
-            >
-              ALL
-            </button>
+
+            <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
+
+            {/* Go to Date Calendar Button */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setGoToDateOpen((v) => !v)}
+                title="Go to date..."
+                className={`w-7 h-7 rounded-[4px] inline-flex items-center justify-center transition-colors cursor-pointer ${
+                  goToDateOpen
+                    ? 'bg-[var(--bg-hover)] text-[var(--accent)]'
+                    : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                }`}
+              >
+                <Calendar className="w-[15px] h-[15px]" strokeWidth={1.5} />
+              </button>
+
+              {goToDateOpen && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const targetSec = Math.floor(new Date(goToDateVal).getTime() / 1000);
+                    if (!Number.isNaN(targetSec) && effectiveCandles.length > 0) {
+                      let bestIdx = 0;
+                      let bestDiff = Infinity;
+                      for (let i = 0; i < effectiveCandles.length; i++) {
+                        const d = Math.abs(effectiveCandles[i].time - targetSec);
+                        if (d < bestDiff) {
+                          bestDiff = d;
+                          bestIdx = i;
+                        }
+                      }
+                      const span = Math.max(20, Math.round(savedZoomRef.current.visibleBars / 2));
+                      chartRef.current?.timeScale().setVisibleLogicalRange({
+                        from: bestIdx - span,
+                        to: bestIdx + span,
+                      });
+                    }
+                    setGoToDateOpen(false);
+                  }}
+                  className="absolute left-0 bottom-9 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl p-2.5 z-50 flex items-center gap-2"
+                >
+                  <input
+                    type="date"
+                    value={goToDateVal}
+                    onChange={(e) => setGoToDateVal(e.target.value)}
+                    className="h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-xs text-[var(--text-main)] outline-none focus:border-[var(--accent)]"
+                  />
+                  <button
+                    type="submit"
+                    className="h-7 px-2.5 rounded bg-[var(--accent)] text-white text-xs font-semibold cursor-pointer"
+                  >
+                    Go
+                  </button>
+                </form>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5">
-            <span className="font-mono-num text-[11px] text-[var(--text-muted)]">{clockStr}</span>
-            <div className="w-px h-3.5 bg-[var(--border)]" />
-            {(
-              [
-                { id: 'pct', label: '%' },
-                { id: 'log', label: 'log' },
-                { id: 'auto', label: 'auto' },
-              ] as const
-            ).map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  if (m.id === 'auto') {
-                    const nextAuto = !chartSettings.scales.autoScale;
-                    onUpdateChartSettings({
-                      ...chartSettings,
-                      scales: { ...chartSettings.scales, autoScale: nextAuto },
-                    });
-                    if (nextAuto) applyScaleMode('auto');
-                  } else {
-                    applyScaleMode(scaleMode === m.id ? 'regular' : m.id);
-                  }
-                }}
-                className={`text-[11px] font-semibold cursor-pointer ${
-                  (m.id === 'auto' ? chartSettings.scales.autoScale : scaleMode === m.id)
-                    ? 'text-[var(--accent)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
-
-            {/* Bottom-Right Price Scale Gear Quick Menu (TradingView Style) */}
-            <div className="relative" ref={scaleMenuRef}>
-              <button
-                type="button"
-                onClick={() => setScaleMenuOpen((v) => !v)}
-                title="Scale Settings"
-                className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors cursor-pointer ${
-                  scaleMenuOpen
-                    ? 'bg-[var(--bg-active)] text-[var(--accent)]'
-                    : 'text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-main)]'
-                }`}
-              >
-                <Settings className="w-3.5 h-3.5" />
-              </button>
-
-              {scaleMenuOpen && (
-                <div className="absolute right-0 bottom-8 w-64 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-50 text-xs text-[var(--text-main)]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = !chartSettings.scales.autoScale;
+            <span className="font-mono-num text-[12px] text-[var(--text-main)]">{clockStr}</span>
+            <div className="hidden sm:block w-px h-3.5 bg-[var(--border)]" />
+            <div className="hidden sm:flex items-center gap-2">
+              {(
+                [
+                  { id: 'pct', label: '%' },
+                  { id: 'log', label: 'log' },
+                  { id: 'auto', label: 'auto' },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => {
+                    if (m.id === 'auto') {
+                      const nextAuto = !chartSettings.scales.autoScale;
                       onUpdateChartSettings({
                         ...chartSettings,
-                        scales: { ...chartSettings.scales, autoScale: next },
+                        scales: { ...chartSettings.scales, autoScale: nextAuto },
                       });
-                      setScaleMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
-                  >
-                    <span className="w-4 inline-flex justify-center">
-                      {chartSettings.scales.autoScale && <Check className="w-3.5 h-3.5" />}
-                    </span>
-                    <span className="flex-1">Auto (fits data to screen)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onUpdateChartSettings({
-                        ...chartSettings,
-                        scales: {
-                          ...chartSettings.scales,
-                          lockPriceToBarRatio: !chartSettings.scales.lockPriceToBarRatio,
-                        },
-                      });
-                      setScaleMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
-                  >
-                    <span className="w-4 inline-flex justify-center">
-                      {chartSettings.scales.lockPriceToBarRatio && <Check className="w-3.5 h-3.5" />}
-                    </span>
-                    <span className="flex-1">Lock price to bar ratio</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onUpdateChartSettings({
-                        ...chartSettings,
-                        scales: {
-                          ...chartSettings.scales,
-                          invertScale: !chartSettings.scales.invertScale,
-                        },
-                      });
-                      setScaleMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
-                  >
-                    <span className="w-4 inline-flex justify-center">
-                      {chartSettings.scales.invertScale && <Check className="w-3.5 h-3.5" />}
-                    </span>
-                    <span className="flex-1">Invert scale</span>
-                    <span className="text-[11px] text-[var(--text-muted)]">Alt + I</span>
-                  </button>
-
-                  <div className="border-t border-[var(--border)] my-1" />
-
-                  {(
-                    [
-                      { id: 'regular', label: 'Regular', shortcut: '' },
-                      { id: 'pct', label: 'Percent', shortcut: 'Alt + P' },
-                      { id: 'indexed100', label: 'Indexed to 100', shortcut: '' },
-                      { id: 'log', label: 'Logarithmic', shortcut: 'Alt + L' },
-                    ] as const
-                  ).map((item) => {
-                    const active =
-                      item.id === 'regular'
-                        ? scaleMode === 'regular' || scaleMode === 'auto'
-                        : scaleMode === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          applyScaleMode(item.id);
-                          setScaleMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
-                      >
-                        <span className="w-4 inline-flex justify-center">
-                          {active && <Check className="w-3.5 h-3.5" />}
-                        </span>
-                        <span className="flex-1">{item.label}</span>
-                        {item.shortcut && (
-                          <span className="text-[11px] text-[var(--text-muted)]">
-                            {item.shortcut}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-
-                  <div className="border-t border-[var(--border)] my-1" />
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onUpdateChartSettings({
-                        ...chartSettings,
-                        scales: {
-                          ...chartSettings.scales,
-                          scalesPlacement:
-                            chartSettings.scales.scalesPlacement === 'left' ? 'right' : 'left',
-                        },
-                      });
-                      setScaleMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
-                  >
-                    <span className="w-4" />
-                    <span className="flex-1">
-                      {chartSettings.scales.scalesPlacement === 'left'
-                        ? 'Move scale to right'
-                        : 'Move scale to left'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onUpdateChartSettings({
-                        ...chartSettings,
-                        scales: {
-                          ...chartSettings.scales,
-                          plusButton: !chartSettings.scales.plusButton,
-                        },
-                      });
-                      setScaleMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
-                  >
-                    <span className="w-4 inline-flex justify-center">
-                      {chartSettings.scales.plusButton && <Check className="w-3.5 h-3.5" />}
-                    </span>
-                    <span className="flex-1">Plus button</span>
-                  </button>
-
-                  <div className="border-t border-[var(--border)] my-1" />
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setScaleMenuOpen(false);
-                      onOpenChartSettings('scales');
-                    }}
-                    className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 font-medium cursor-pointer"
-                  >
-                    <span className="w-4 inline-flex justify-center">
-                      <Settings className="w-3.5 h-3.5" />
-                    </span>
-                    <span>More settings...</span>
-                  </button>
-                </div>
-              )}
+                      if (nextAuto) applyScaleMode('auto');
+                    } else {
+                      applyScaleMode(scaleMode === m.id ? 'regular' : m.id);
+                    }
+                  }}
+                  className={`text-[11.5px] font-medium cursor-pointer ${
+                    (m.id === 'auto' ? chartSettings.scales.autoScale : scaleMode === m.id)
+                      ? 'text-[var(--accent)] font-semibold'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

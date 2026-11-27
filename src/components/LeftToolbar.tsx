@@ -5,10 +5,7 @@ import {
   Magnet,
   Lock,
   Unlock,
-  Eye,
   EyeOff,
-  Trash2,
-  PenTool,
   ZoomOut,
 } from 'lucide-react';
 import { DrawingTool, MagnetMode } from '../types/trading';
@@ -19,6 +16,12 @@ import {
   TOOL_GROUPS,
   ZOOM_TOOL,
 } from '../utils/drawingToolsCatalog';
+import {
+  EyeBrushIcon,
+  SparkleBarsIcon,
+  StayInDrawingIcon,
+  TrashMinimalIcon,
+} from './TradingViewIcons';
 
 interface LeftToolbarProps {
   activeTool: DrawingTool;
@@ -38,6 +41,7 @@ interface LeftToolbarProps {
   onDeleteSelectedDrawing: () => void;
   onClearDrawings: () => void;
   onZoomOut: () => void;
+  onOpenIndicators?: () => void;
 }
 
 export const LeftToolbar: React.FC<LeftToolbarProps> = ({
@@ -58,8 +62,8 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   onDeleteSelectedDrawing,
   onClearDrawings,
   onZoomOut,
+  onOpenIndicators,
 }) => {
-  // Remember the last chosen tool per group so the left rail icon updates just like TradingView
   const [groupActiveTool, setGroupActiveTool] = useState<Record<string, DrawingTool>>(() =>
     TOOL_GROUPS.reduce((acc, g) => {
       acc[g.id] = g.defaultTool;
@@ -71,7 +75,6 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   const [menuTop, setMenuTop] = useState<number>(48);
   const railRef = useRef<HTMLDivElement>(null);
 
-  // Sync group active tool when activeTool changes externally (e.g. keyboard shortcut or favorite bar)
   useEffect(() => {
     const grp = findGroupForTool(activeTool);
     if (grp) {
@@ -81,7 +84,6 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
     }
   }, [activeTool]);
 
-  // Close flyout on click outside
   useEffect(() => {
     if (!openMenuId) return;
     const handleOutside = (e: MouseEvent) => {
@@ -120,32 +122,37 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   return (
     <aside
       ref={railRef}
-      className="relative w-[52px] bg-[var(--bg-surface)] border-r border-[var(--border)] flex flex-col items-center py-2 gap-1 shrink-0 select-none z-30"
+      className="relative w-[50px] bg-[var(--bg-surface)] rounded-tr-[6px] flex flex-col items-center py-2 gap-1 shrink-0 select-none z-30"
     >
       {/* Category Tool Slots with Flyout Chevron */}
-      <div className="flex flex-col items-center gap-1 w-full overflow-y-auto overflow-x-hidden pb-2">
+      <div className="flex flex-col items-center gap-0.5 w-full overflow-y-auto overflow-x-hidden pb-2">
         {TOOL_GROUPS.map((group) => {
           const currentId = groupActiveTool[group.id] || group.defaultTool;
           const toolDef = ALL_TOOLS_MAP[currentId];
           const isGroupActive = group.tools.some((t) => t.id === activeTool);
+          const isCursorGroup = group.id === 'cursors';
           const isMenuOpen = openMenuId === group.id;
 
           return (
             <div key={group.id} className="relative group/slot flex items-center justify-center w-full">
               <button
+                type="button"
                 onClick={() => onSelectTool(currentId)}
                 title={`${toolDef.label}${toolDef.shortcut ? ` (${toolDef.shortcut})` : ''}`}
-                className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+                className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
                   isGroupActive
-                    ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                    ? isCursorGroup
+                      ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
+                      : 'bg-[var(--bg-active)] text-[var(--accent)]'
                     : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 {toolDef.renderIcon('w-[19px] h-[19px]')}
               </button>
 
-              {/* Tiny right-edge flyout chevron trigger */}
+              {/* Right-edge flyout chevron trigger */}
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   openFlyout(group.id, e.currentTarget.parentElement);
@@ -153,7 +160,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 title={`${group.title} menu`}
                 className={`absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-7 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
                   isMenuOpen
-                    ? 'opacity-100 bg-[var(--bg-hover)] text-[var(--accent)]'
+                    ? 'opacity-100 bg-[var(--bg-hover)] text-[var(--text-main)]'
                     : 'opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)]'
                 }`}
               >
@@ -163,13 +170,24 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           );
         })}
 
-        <div className="w-7 h-px bg-[var(--border)] my-1 shrink-0" />
+        <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
+
+        {/* Sparkle / Pattern & Indicator Quick Trigger (|✦| from Screenshot 7) */}
+        <button
+          type="button"
+          onClick={() => onOpenIndicators?.()}
+          title="Indicators & Chart Patterns"
+          className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+        >
+          <SparkleBarsIcon className="w-[19px] h-[19px]" />
+        </button>
 
         {/* Measure Tool */}
         <button
+          type="button"
           onClick={() => onSelectTool('measure')}
           title="Measure Price & Bars (Drag)"
-          className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             activeTool === 'measure'
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
@@ -181,9 +199,10 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
         {/* Zoom In Box Tool + Zoom Out */}
         <div className="relative group/slot flex items-center justify-center w-full">
           <button
+            type="button"
             onClick={() => onSelectTool('zoom_in')}
             title="Zoom In (Drag Box on Chart)"
-            className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               activeTool === 'zoom_in'
                 ? 'bg-[var(--bg-active)] text-[var(--accent)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
@@ -192,6 +211,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
             {ZOOM_TOOL.renderIcon('w-[19px] h-[19px]')}
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onZoomOut();
@@ -203,11 +223,12 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           </button>
         </div>
 
-        <div className="w-7 h-px bg-[var(--border)] my-1 shrink-0" />
+        <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
 
-        {/* Magnet Mode (TradingView dark toggle + Weak/Strong flyout) */}
+        {/* Magnet Mode */}
         <div className="relative group/slot flex items-center justify-center w-full">
           <button
+            type="button"
             onClick={() => onChangeMagnetMode(magnetMode === 'off' ? 'weak' : 'off')}
             title={
               magnetMode === 'off'
@@ -216,15 +237,16 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 ? 'Weak Magnet: ON (Snaps near candle OHLC)'
                 : 'Strong Magnet: ON (Always snaps to candle OHLC)'
             }
-            className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               magnetMode !== 'off'
                 ? 'bg-[#131722] dark:bg-[var(--accent)] text-white'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <Magnet className="w-[18px] h-[18px]" />
+            <Magnet className="w-[18px] h-[18px]" strokeWidth={1.45} />
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               openFlyout('magnet', e.currentTarget.parentElement);
@@ -240,56 +262,70 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           </button>
         </div>
 
-        {/* Stay in Drawing Mode */}
+        {/* Stay in Drawing Mode (Pencil + Padlock Icon from Screenshot 7) */}
         <button
+          type="button"
           onClick={onToggleStayInDrawingMode}
           title={
             stayInDrawingMode
               ? 'Stay in Drawing Mode: ON (Keep tool active after drawing)'
               : 'Stay in Drawing Mode: OFF (Return to cursor after drawing)'
           }
-          className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             stayInDrawingMode
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          <PenTool className="w-[17px] h-[17px]" />
+          <StayInDrawingIcon className="w-[19px] h-[19px]" />
         </button>
 
         {/* Lock All Drawings */}
         <button
+          type="button"
           onClick={onToggleLockDrawings}
           title={
             lockDrawings
               ? 'All Drawings Locked (Click to unlock dragging/editing)'
               : 'Lock All Drawing Tools'
           }
-          className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             lockDrawings
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          {lockDrawings ? <Lock className="w-[17px] h-[17px]" /> : <Unlock className="w-[17px] h-[17px]" />}
+          {lockDrawings ? (
+            <Lock className="w-[17px] h-[17px]" strokeWidth={1.45} />
+          ) : (
+            <Unlock className="w-[17px] h-[17px]" strokeWidth={1.45} />
+          )}
         </button>
 
-        {/* Hide All Drawings */}
+        {/* Hide All Drawings (Eye + Mini Brush Icon from Screenshot 7) */}
         <button
+          type="button"
           onClick={onToggleHideDrawings}
           title={drawingsHidden ? 'Show All Drawings' : 'Hide All Drawings'}
-          className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
             drawingsHidden
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          {drawingsHidden ? <EyeOff className="w-[17px] h-[17px]" /> : <Eye className="w-[17px] h-[17px]" />}
+          {drawingsHidden ? (
+            <EyeOff className="w-[17px] h-[17px]" strokeWidth={1.45} />
+          ) : (
+            <EyeBrushIcon className="w-[19px] h-[19px]" />
+          )}
         </button>
 
-        {/* Remove Drawings (Click or flyout) */}
+        <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
+
+        {/* Remove Drawings (Minimal Trash Icon from Screenshot 7) */}
         <div className="relative group/slot flex items-center justify-center w-full">
           <button
+            type="button"
             onClick={() => {
               if (selectedDrawingId) onDeleteSelectedDrawing();
               else onClearDrawings();
@@ -300,12 +336,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 ? 'Delete Selected Drawing (Del)'
                 : `Remove All Drawings (${drawingsCount})`
             }
-            className="w-9 h-9 rounded-md flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer"
+            className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer"
           >
-            <Trash2 className="w-[17px] h-[17px]" />
+            <TrashMinimalIcon className="w-[19px] h-[19px]" />
           </button>
           {drawingsCount > 0 && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 openFlyout('trash', e.currentTarget.parentElement);
@@ -323,7 +360,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
         </div>
       </div>
 
-      {/* FLYOUT SUBMENU FOR TOOL GROUPS (TradingView Style) */}
+      {/* FLYOUT SUBMENU FOR TOOL GROUPS */}
       {openGroup && (
         <div
           style={{ top: `${menuTop}px` }}
@@ -367,6 +404,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                       </span>
                     )}
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggleFavoriteTool(tool.id);
@@ -406,12 +444,15 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           ).map((m) => (
             <button
               key={m.id}
+              type="button"
               onClick={() => {
                 onChangeMagnetMode(m.id);
                 setOpenMenuId(null);
               }}
               className={`w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex flex-col cursor-pointer ${
-                magnetMode === m.id ? 'bg-[var(--bg-active)] text-[var(--accent)]' : 'text-[var(--text-main)]'
+                magnetMode === m.id
+                  ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                  : 'text-[var(--text-main)]'
               }`}
             >
               <span className="text-xs font-semibold">{m.label}</span>
@@ -429,6 +470,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
         >
           {selectedDrawingId && (
             <button
+              type="button"
               onClick={() => {
                 onDeleteSelectedDrawing();
                 setOpenMenuId(null);
@@ -439,6 +481,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
             </button>
           )}
           <button
+            type="button"
             onClick={() => {
               onClearDrawings();
               setOpenMenuId(null);

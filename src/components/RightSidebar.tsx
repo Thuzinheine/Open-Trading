@@ -1,19 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  List,
   Layers,
   AlarmClock,
   AlarmClockPlus,
   Plus,
   Trash2,
-  Briefcase,
   X,
   ChevronDown,
   ChevronUp,
   ChevronRight,
   MoreHorizontal,
-  Maximize2,
-  Minimize2,
   Copy,
   Pencil,
   SeparatorHorizontal,
@@ -28,8 +24,14 @@ import {
   HelpCircle,
   Check,
   Bell,
+  Sparkles,
+  Target,
+  Mountain,
+  Rss,
+  MessageSquare,
 } from 'lucide-react';
 import {
+  CandleBar,
   MarketTrade,
   OrderBookLevel,
   PriceAlert,
@@ -42,6 +44,12 @@ import {
 } from '../types/trading';
 import { fmtCompact, fmtPrice, WS_BASE } from '../utils/binance';
 import { CoinLogo, FLAG_COLORS, FlagRibbon, getCoinSector, SplitPrice } from './CoinLogo';
+import {
+  AppsCircleIcon,
+  CornerFullscreenIcon,
+  WatchlistBookmarkIcon,
+} from './TradingViewIcons';
+import { SymbolAnalyticsSections } from './SymbolAnalyticsSections';
 
 interface RightSidebarProps {
   visible: boolean;
@@ -49,6 +57,7 @@ interface RightSidebarProps {
   onSelectTab: (tab: RightPanelTab) => void;
   onToggleVisible: () => void;
   onToggleTrade: () => void;
+  onOpenIndicators?: () => void;
   onOpenSettings: (tab?: 'symbol' | 'events') => void;
   watchlists: WatchlistCollection[];
   activeListId: string;
@@ -63,6 +72,7 @@ interface RightSidebarProps {
   onUpdateWatchlistPrefs: (updater: (prev: WatchlistViewPrefs) => WatchlistViewPrefs) => void;
   openListModalTrigger?: number;
   tickerMap: Record<string, TickerData>;
+  candles: CandleBar[];
   avgVolume30d: number;
   currentSymbol: string;
   onSelectSymbol: (sym: string) => void;
@@ -94,6 +104,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onSelectTab,
   onToggleVisible,
   onToggleTrade,
+  onOpenIndicators,
   onOpenSettings,
   watchlists,
   activeListId,
@@ -108,6 +119,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   onUpdateWatchlistPrefs,
   openListModalTrigger = 0,
   tickerMap,
+  candles,
   avgVolume30d,
   currentSymbol,
   onSelectSymbol,
@@ -140,9 +152,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [sectionDraft, setSectionDraft] = useState('');
 
-  // Symbol details controls
+  // Symbol details controls + resizable split ratio
   const [showExtendedDetails, setShowExtendedDetails] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [watchlistRatio, setWatchlistRatio] = useState<number>(46);
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const detailsScrollRef = useRef<HTMLDivElement>(null);
+  const technicalsRef = useRef<HTMLDivElement>(null);
 
   // Drag & Drop state
   const [dragSym, setDragSym] = useState<string | null>(null);
@@ -158,6 +174,23 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const detailsMoreRef = useRef<HTMLDivElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStartResizeSplit = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = splitContainerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const onMove = (ev: MouseEvent) => {
+      const pct = ((ev.clientY - rect.top) / rect.height) * 100;
+      setWatchlistRatio(Math.max(22, Math.min(76, pct)));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   const activeList = useMemo(
     () => watchlists.find((l) => l.id === activeListId) || watchlists[0],
@@ -510,11 +543,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   };
 
   return (
-    <div className="flex shrink-0 h-full select-none">
+    <div className="flex gap-[4px] shrink-0 h-full select-none">
       {/* Main Right Sidebar Panel */}
       {visible && (
         <aside
-          className={`${sidebarWidthClass} hidden lg:flex flex-col bg-[var(--bg-surface)] border-l border-[var(--border)] h-full transition-[width] duration-150`}
+          ref={splitContainerRef}
+          className={`${sidebarWidthClass} hidden lg:flex flex-col bg-[var(--bg-surface)] rounded-[6px] overflow-hidden h-full transition-[width] duration-150`}
         >
           {/* WATCHLIST TAB */}
           {activeTab === 'watchlist' && activeList && (
@@ -710,11 +744,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                       watchlistPrefs.tableView ? 'bg-[var(--bg-hover)] text-[var(--accent)]' : 'text-[var(--text-main)]'
                     }`}
                   >
-                    {watchlistPrefs.tableView ? (
-                      <Minimize2 className="w-[15px] h-[15px]" strokeWidth={1.7} />
-                    ) : (
-                      <Maximize2 className="w-[15px] h-[15px]" strokeWidth={1.7} />
-                    )}
+                    <CornerFullscreenIcon className="w-[16px] h-[16px]" />
                   </button>
 
                   {/* Screenshot 8 (...) More Options Dropdown */}
@@ -1053,8 +1083,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 {cols.extHours && <span className="text-right">24h</span>}
               </div>
 
-              {/* Watchlist Scrollable Rows with Drag & Drop */}
-              <div className="flex-1 overflow-y-auto py-0.5">
+              {/* Watchlist Scrollable Rows with Drag & Drop (Resizable upper pane) */}
+              <div
+                style={{ flexBasis: `${watchlistRatio}%` }}
+                className="min-h-[120px] grow-0 shrink-0 overflow-y-auto py-0.5"
+              >
                 {displayRows.length === 0 ? (
                   <div className="p-6 text-center space-y-2.5">
                     <div className="text-xs text-[var(--text-muted)]">
@@ -1325,9 +1358,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 )}
               </div>
 
-              {/* Bottom Symbol Details Panel (Exact TradingView Screenshot 1!) */}
-              <div className="border-t-2 border-[var(--border)] px-3.5 pt-3 pb-3 bg-[var(--bg-surface)] shrink-0">
-                {/* Header Row: Logo + Symbol | Grid, Notes, More */}
+              {/* Draggable Horizontal Split Handle between Watchlist & Symbol Details */}
+              <div
+                onMouseDown={handleStartResizeSplit}
+                title="Drag to resize Watchlist / Details"
+                className="h-[5px] shrink-0 bg-[var(--bg-gutter)] hover:bg-[var(--accent)]/40 cursor-row-resize transition-colors"
+              />
+
+              {/* Bottom Scrollable Symbol Details Panel (Exact TradingView Full-Screen Match!) */}
+              <div
+                ref={detailsScrollRef}
+                className="flex-1 min-h-0 overflow-y-auto px-3.5 pt-3 pb-4 bg-[var(--bg-surface)]"
+              >
+                {/* Sticky Header Row: Logo + Symbol | Grid, Notes, More */}
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2 min-w-0">
                     <CoinLogo
@@ -1514,6 +1557,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     />
                   </div>
                 )}
+
+                {/* Key Stats, Performance 6-Tile Grid, Seasonals Chart, & Technicals Gauge */}
+                <SymbolAnalyticsSections
+                  symbol={currentSymbol}
+                  ticker={curTicker}
+                  candles={candles}
+                  technicalsRef={technicalsRef}
+                />
               </div>
             </>
           )}
@@ -1753,74 +1804,151 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         </aside>
       )}
 
-      {/* Far-Right TradingView Icon Rail (Screenshot 1) */}
-      <aside className="w-[46px] bg-[var(--bg-surface)] border-l border-[var(--border)] flex flex-col items-center py-2 justify-between shrink-0">
+      {/* Far-Right TradingView Icon Rail (Exact 1:1 Match to Full-Screen Screenshots) */}
+      <aside className="w-[46px] bg-[var(--bg-surface)] rounded-tl-[6px] flex flex-col items-center py-2 justify-between shrink-0">
         {/* Top Rail Icons */}
         <div className="flex flex-col items-center gap-1.5">
           <button
+            type="button"
             onClick={() => handleRailClick('watchlist')}
             title="Watchlist, details and news"
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'watchlist'
-                ? 'bg-[var(--bg-hover)] text-[var(--text-main)]'
+                ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <List className="w-[19px] h-[19px]" strokeWidth={1.6} />
+            <WatchlistBookmarkIcon className="w-[20px] h-[20px]" />
           </button>
 
           <button
+            type="button"
             onClick={() => handleRailClick('alerts')}
             title="Alerts"
-            className={`relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+            className={`relative w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'alerts'
-                ? 'bg-[var(--bg-hover)] text-[var(--text-main)]'
+                ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <AlarmClock className="w-[19px] h-[19px]" strokeWidth={1.6} />
+            <AlarmClock className="w-[19px] h-[19px]" strokeWidth={1.45} />
             {activeAlertsCount > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--down)]" />
             )}
           </button>
 
           <button
+            type="button"
             onClick={() => handleRailClick('orderbook')}
             title="Order Book & Live Market Depth"
-            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'orderbook'
-                ? 'bg-[var(--bg-hover)] text-[var(--text-main)]'
+                ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <Layers className="w-[19px] h-[19px]" strokeWidth={1.6} />
+            <Layers className="w-[19px] h-[19px]" strokeWidth={1.45} />
           </button>
         </div>
 
-        {/* Bottom Rail Icons */}
-        <div className="flex flex-col items-center gap-1.5">
+        {/* Bottom Rail Icons (All wired to real live features!) */}
+        <div className="flex flex-col items-center gap-1">
           <button
+            type="button"
+            onClick={() => onOpenIndicators?.()}
+            title="Indicators & Strategies"
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-[18px] h-[18px]" strokeWidth={1.45} />
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenSearch}
+            title="Symbol Screener / Search (Ctrl+K)"
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          >
+            <Target className="w-[18px] h-[18px]" strokeWidth={1.45} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!visible) onToggleVisible();
+              onSelectTab('watchlist');
+              setTimeout(() => {
+                technicalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 80);
+            }}
+            title="Technicals & Seasonals"
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          >
+            <Mountain className="w-[18px] h-[18px]" strokeWidth={1.45} />
+          </button>
+
+          <button
+            type="button"
             onClick={() => onOpenSettings('events')}
             title="Calendar & Events Settings"
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Calendar className="w-[18px] h-[18px]" strokeWidth={1.6} />
+            <Calendar className="w-[18px] h-[18px]" strokeWidth={1.45} />
           </button>
 
           <button
+            type="button"
+            onClick={() => {
+              onSelectTab('orderbook');
+              setObSubTab('trades');
+              if (!visible) onToggleVisible();
+            }}
+            title="Live Market Trades Feed"
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          >
+            <Rss className="w-[18px] h-[18px]" strokeWidth={1.45} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleRailClick('alerts')}
+            title="Alert Notifications"
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          >
+            <Bell className="w-[18px] h-[18px]" strokeWidth={1.45} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!visible) onToggleVisible();
+              onSelectTab('watchlist');
+              setNotesOpen((v) => !v);
+              setTimeout(() => {
+                detailsScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+              }, 60);
+            }}
+            title={`Quick Notes for ${currentSymbol}`}
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          >
+            <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.45} />
+          </button>
+
+          <button
+            type="button"
             onClick={onToggleTrade}
             title="Paper Trading Panel"
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[34px] h-[34px] my-0.5 rounded-full flex items-center justify-center text-[var(--text-main)] hover:opacity-85 transition-opacity cursor-pointer"
           >
-            <Briefcase className="w-[18px] h-[18px]" strokeWidth={1.6} />
+            <AppsCircleIcon className="w-[26px] h-[26px]" />
           </button>
 
           <button
+            type="button"
             onClick={() => setShortcutsOpen(true)}
             title="Keyboard Shortcuts"
-            className="w-9 h-9 rounded-lg flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <HelpCircle className="w-[19px] h-[19px]" strokeWidth={1.6} />
+            <HelpCircle className="w-[19px] h-[19px]" strokeWidth={1.45} />
           </button>
         </div>
       </aside>

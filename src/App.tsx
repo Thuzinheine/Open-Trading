@@ -1228,7 +1228,7 @@ export default function App() {
   ].filter(Boolean).length;
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col bg-[var(--bg-app)] text-[var(--text-main)]">
+    <div className="h-screen w-screen overflow-hidden flex flex-col gap-[4px] bg-[var(--bg-gutter)] text-[var(--text-main)]">
       {/* Top Toolbar */}
       <TopBar
         currentSymbol={currentSymbol}
@@ -1252,6 +1252,14 @@ export default function App() {
         onRedo={handleRedo}
         barCount={candles.length}
         onSnapshot={() => chartWorkspaceRef.current?.takeSnapshot()}
+        onToggleRightPanel={() => setRightVisible((v) => !v)}
+        onSaveWorkspace={() => {
+          saveWatchlistCollections(watchlists);
+          saveChartSettings(chartSettings);
+          saveIndicators(indicators);
+          saveAllDrawings(drawingsMap);
+          pushToast('Workspace Saved', 'Chart layout, drawings, and watchlists saved.', 'success');
+        }}
         isTradeOpen={isTradeOpen}
         openPositionsCount={paperAccount.positions.length}
         onToggleTrade={() => setIsTradeOpen((v) => !v)}
@@ -1260,8 +1268,8 @@ export default function App() {
         onToggleTheme={() => setIsDarkMode((d) => !d)}
       />
 
-      {/* Main Workspace Row */}
-      <div className="flex-1 flex min-h-0">
+      {/* Main Workspace Row (4px TradingView Gutters + Crisp Rounded Panels) */}
+      <div className="flex-1 flex gap-[4px] min-h-0">
         {/* Left Drawing Toolbox (TradingView Style with Flyout Menus) */}
         <LeftToolbar
           activeTool={activeTool}
@@ -1282,7 +1290,6 @@ export default function App() {
             setDrawingsHidden((h) => {
               const nextHidden = !h;
               if (!nextHidden) {
-                // Also restore any individually hidden drawings when unhiding all
                 setDrawingsMap((prev) => ({
                   ...prev,
                   [currentSymbol]: (prev[currentSymbol] || []).map((d) =>
@@ -1303,10 +1310,11 @@ export default function App() {
           }}
           onClearDrawings={handleClearDrawings}
           onZoomOut={() => chartWorkspaceRef.current?.zoomOut()}
+          onOpenIndicators={() => setIndicatorsOpen(true)}
         />
 
         {/* Center Chart + Bottom Paper Trade Drawer */}
-        <main className="flex-1 flex flex-col min-w-0 min-h-0">
+        <main className="flex-1 flex flex-col min-w-0 min-h-0 rounded-[6px] overflow-hidden bg-[var(--bg-app)]">
           <ChartWorkspace
             ref={chartWorkspaceRef}
             symbol={currentSymbol}
@@ -1397,6 +1405,7 @@ export default function App() {
           onSelectTab={setRightTab}
           onToggleVisible={() => setRightVisible((v) => !v)}
           onToggleTrade={() => setIsTradeOpen((v) => !v)}
+          onOpenIndicators={() => setIndicatorsOpen(true)}
           onOpenSettings={(tab) => handleOpenChartSettings(tab || 'symbol')}
           watchlists={watchlists}
           activeListId={activeWatchlist?.id || 'main'}
@@ -1411,6 +1420,7 @@ export default function App() {
           onUpdateWatchlistPrefs={setWatchlistPrefs}
           openListModalTrigger={openListModalTrigger}
           tickerMap={tickerMap}
+          candles={candles}
           avgVolume30d={avgVolume30d}
           currentSymbol={currentSymbol}
           onSelectSymbol={(sym) => loadSymbolChart(sym, interval)}
