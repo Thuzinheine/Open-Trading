@@ -175,18 +175,42 @@ export const INTERVAL_SECONDS: Record<Timeframe, number> = {
   '1w': 604800,
 };
 
+let preferredRestMirrorIdx = 0;
+
 export async function fetchBinance<T = unknown>(
   pathWithQuery: string,
-  options?: { fresh?: boolean }
+  options?: { fresh?: boolean; signal?: AbortSignal; timeoutMs?: number }
 ): Promise<T> {
   let lastErr: unknown = null;
-  for (const base of REST_MIRRORS) {
+  const total = REST_MIRRORS.length;
+  const timeoutMs = options?.timeoutMs ?? 4500;
+
+  for (let offset = 0; offset < total; offset++) {
+    if (options?.signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    const idx = (preferredRestMirrorIdx + offset) % total;
+    const base = REST_MIRRORS[idx];
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+
+    const onExternalAbort = () => controller.abort();
+    options?.signal?.addEventListener('abort', onExternalAbort, { once: true });
+
     try {
-      const res = await fetch(`${base}${pathWithQuery}`, options?.fresh ? { cache: 'no-store' } : undefined);
+      const res = await fetch(`${base}${pathWithQuery}`, {
+        cache: options?.fresh ? 'no-store' : 'default',
+        signal: controller.signal,
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as T;
+      const json = (await res.json()) as T;
+      preferredRestMirrorIdx = idx;
+      return json;
     } catch (err) {
       lastErr = err;
+    } finally {
+      window.clearTimeout(timer);
+      options?.signal?.removeEventListener('abort', onExternalAbort);
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('All Binance mirrors unavailable');

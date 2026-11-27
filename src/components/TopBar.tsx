@@ -30,6 +30,7 @@ interface TopBarProps {
   symbolMeta: WatchlistItem;
   interval: Timeframe;
   onIntervalChange: (tf: Timeframe) => void;
+  onPrefetchInterval?: (tf: Timeframe) => void;
   chartType: ChartType;
   onChartTypeChange: (ct: ChartType) => void;
   activeIndicatorCount: number;
@@ -85,6 +86,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   currentSymbol,
   interval,
   onIntervalChange,
+  onPrefetchInterval,
   chartType,
   onChartTypeChange,
   activeIndicatorCount,
@@ -199,6 +201,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               key={tf.value}
               type="button"
+              onMouseEnter={() => onPrefetchInterval?.(tf.value)}
               onClick={() => onIntervalChange(tf.value)}
               className={`h-7 px-2 rounded-[5px] text-[13px] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 active
@@ -234,6 +237,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               <button
                 key={tf.value}
                 type="button"
+                onMouseEnter={() => onPrefetchInterval?.(tf.value)}
                 onClick={() => {
                   onIntervalChange(tf.value);
                   setTfMenuOpen(false);

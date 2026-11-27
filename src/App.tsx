@@ -179,8 +179,29 @@ export default function App() {
   const isChartLoadingRef = useRef<boolean>(false);
   const loadedChartRef = useRef<{ sym: string; tf: Timeframe } | null>(null);
   const chartCacheRef = useRef<
-    Map<string, { candles: CandleBar[]; volumes: VolumeBar[]; closeMs: number }>
+    Map<
+      string,
+      {
+        candles: CandleBar[];
+        volumes: VolumeBar[];
+        closeMs: number;
+        cachedAt: number;
+        hasMore: boolean;
+      }
+    >
   >(new Map());
+  const inFlightChartRef = useRef<
+    Map<
+      string,
+      Promise<{
+        candles: CandleBar[];
+        volumes: VolumeBar[];
+        closeMs: number;
+        hasMore: boolean;
+      } | null>
+    >
+  >(new Map());
+  const warmTimersRef = useRef<number[]>([]);
   const isFetchingHistoryRef = useRef<boolean>(false);
   const hasMoreHistoryRef = useRef<boolean>(true);
   const klineWsRef = useRef<ManagedBinanceSocket | null>(null);
@@ -714,7 +735,79 @@ export default function App() {
     [applyKlineBars, applyLiveTradePrice]
   );
 
-  // Load Symbol + Timeframe history (atomic swap — never leaks previous coin's candles or flashes Loading text)
+  // Shared fast kline fetcher (limit=300 for 3-4x faster initial render, deduplicated across hover/click)
+  const fetchChartBatch = useCallback(async (sym: string, tf: Timeframe) => {
+    const cacheKey = `${sym}_${tf}`;
+    const existing = inFlightChartRef.current.get(cacheKey);
+    if (existing) return existing;
+
+    const promise = (async () => {
+      try {
+        const raw = await fetchBinance<unknown[][]>(
+          `/klines?symbol=${sym}&interval=${tf}&limit=300`,
+          { fresh: true }
+        );
+        if (!Array.isArray(raw) || raw.length === 0) return null;
+        const parsed = parseKlines(raw);
+        const closeMs = Number(raw[raw.length - 1][6]);
+        const entry = {
+          candles: parsed.candles,
+          volumes: parsed.volumes,
+          closeMs,
+          cachedAt: Date.now(),
+          hasMore: raw.length === 300,
+        };
+        chartCacheRef.current.set(cacheKey, entry);
+        // Keep cache bounded to 48 recent charts
+        if (chartCacheRef.current.size > 48) {
+          const oldestKey = chartCacheRef.current.keys().next().value;
+          if (oldestKey) chartCacheRef.current.delete(oldestKey);
+        }
+        return entry;
+      } catch {
+        return null;
+      } finally {
+        inFlightChartRef.current.delete(cacheKey);
+      }
+    })();
+
+    inFlightChartRef.current.set(cacheKey, promise);
+    return promise;
+  }, []);
+
+  // Silent hover/background prefetcher so clicking a coin or H1/H4/D/W is 0ms instant
+  const prefetchChart = useCallback(
+    (sym: string, tf: Timeframe) => {
+      const cacheKey = `${sym}_${tf}`;
+      const cached = chartCacheRef.current.get(cacheKey);
+      if (cached && Date.now() - cached.cachedAt < 90_000) return;
+      if (inFlightChartRef.current.has(cacheKey)) return;
+      void fetchChartBatch(sym, tf);
+    },
+    [fetchChartBatch]
+  );
+
+  // Schedule gentle background warmup of sibling timeframes (15m, 1h, 4h, 1d, 1w) for the active coin
+  const scheduleSiblingWarmup = useCallback(
+    (sym: string, activeTf: Timeframe, expectedGen: number) => {
+      warmTimersRef.current.forEach((t) => window.clearTimeout(t));
+      warmTimersRef.current = [];
+
+      const siblingTfs: Timeframe[] = (['1h', '4h', '1d', '15m', '1w'] as Timeframe[]).filter(
+        (t) => t !== activeTf
+      );
+      siblingTfs.forEach((tf, idx) => {
+        const timer = window.setTimeout(() => {
+          if (expectedGen !== loadGenRef.current) return;
+          prefetchChart(sym, tf);
+        }, 280 + idx * 140);
+        warmTimersRef.current.push(timer);
+      });
+    },
+    [prefetchChart]
+  );
+
+  // Load Symbol + Timeframe history (instant 0ms on cache hit, fast 300-bar load + background history backfill on miss)
   const loadSymbolChart = useCallback(
     async (sym: string, tf: Timeframe) => {
       loadGenRef.current += 1;
@@ -737,6 +830,8 @@ export default function App() {
           candles: candlesRef.current,
           volumes: volumesRef.current,
           closeMs: candleCloseMsRef.current,
+          cachedAt: Date.now(),
+          hasMore: hasMoreHistoryRef.current,
         });
       }
 
@@ -745,61 +840,84 @@ export default function App() {
       setSelectedDrawingId(null);
       setIsReplayMode(false);
       setIsReplayPlaying(false);
-      hasMoreHistoryRef.current = true;
       isFetchingHistoryRef.current = false;
       setLoadingText(null);
 
-      // Instant 0ms switch if we already cached this coin+timeframe, then refresh seamlessly in background
       const cacheKey = `${sym}_${tf}`;
       const cached = chartCacheRef.current.get(cacheKey);
+      const cacheAgeMs = cached ? Date.now() - cached.cachedAt : Infinity;
+
       if (cached && cached.candles.length > 0) {
+        // 0ms INSTANT SWITCH!
         isChartLoadingRef.current = false;
         loadedChartRef.current = { sym, tf };
+        hasMoreHistoryRef.current = cached.hasMore;
         setChartDataMeta({ sym, tf });
         setCandles(cached.candles);
         setVolumes(cached.volumes);
         setCandleCloseMs(cached.closeMs);
         lastChartTickMsRef.current = Date.now();
+        prevPriceMapRef.current[sym] = cached.candles[cached.candles.length - 1].close;
+
+        // Immediately connect live WebSocket for real-time ticks
+        connectKlineSocket(sym, tf, myGen);
+        scheduleSiblingWarmup(sym, tf, myGen);
+
+        // If cache is still reasonably fresh (< 5 min), only fetch the latest 5 bars (~400 bytes!) to catch up
+        if (cacheAgeMs < 300_000) {
+          fetchBinance<unknown[][]>(`/klines?symbol=${sym}&interval=${tf}&limit=5`, { fresh: true })
+            .then((rawRecent) => {
+              if (myGen !== loadGenRef.current || !Array.isArray(rawRecent) || !rawRecent.length) {
+                return;
+              }
+              const parsed = parseKlines(rawRecent);
+              lastChartTickMsRef.current = Date.now();
+              applyKlineBars(
+                sym,
+                tf,
+                parsed.candles,
+                parsed.volumes,
+                Number(rawRecent[rawRecent.length - 1][6])
+              );
+            })
+            .catch(() => {});
+
+          if (cached.candles.length < 500 && cached.hasMore) {
+            window.setTimeout(() => prependOlderCandles(myGen), 180);
+          }
+          return;
+        }
       } else {
         // Block any live price ticks from mutating the previous coin's candles while fetching!
         isChartLoadingRef.current = true;
+        hasMoreHistoryRef.current = true;
       }
 
       try {
-        const raw = await fetchBinance<unknown[][]>(
-          `/klines?symbol=${sym}&interval=${tf}&limit=1000`,
-          { fresh: true }
-        );
+        const entry = await fetchChartBatch(sym, tf);
         if (myGen !== loadGenRef.current) return;
-        if (!Array.isArray(raw) || raw.length === 0) throw new Error('Empty klines');
-
-        const parsed = parseKlines(raw);
-        const closeMs = Number(raw[raw.length - 1][6]);
+        if (!entry || entry.candles.length === 0) throw new Error('Empty klines');
 
         loadedChartRef.current = { sym, tf };
         isChartLoadingRef.current = false;
-        chartCacheRef.current.set(cacheKey, {
-          candles: parsed.candles,
-          volumes: parsed.volumes,
-          closeMs,
-        });
+        hasMoreHistoryRef.current = entry.hasMore;
 
         setChartDataMeta({ sym, tf });
-        setCandles(parsed.candles);
-        setVolumes(parsed.volumes);
-        setCandleCloseMs(closeMs);
+        setCandles(entry.candles);
+        setVolumes(entry.volumes);
+        setCandleCloseMs(entry.closeMs);
         lastChartTickMsRef.current = Date.now();
         setLoadingText(null);
 
-        const lastClose = parsed.candles[parsed.candles.length - 1].close;
+        const lastClose = entry.candles[entry.candles.length - 1].close;
         prevPriceMapRef.current[sym] = lastClose;
 
         connectKlineSocket(sym, tf, myGen);
+        scheduleSiblingWarmup(sym, tf, myGen);
 
-        if (raw.length === 1000) {
-          setTimeout(() => prependOlderCandles(myGen), 120);
-        } else {
-          hasMoreHistoryRef.current = false;
+        // Silently backfill older 1000 historical candles after the initial fast chart is already visible
+        if (entry.hasMore) {
+          window.setTimeout(() => prependOlderCandles(myGen), 140);
         }
       } catch (err) {
         if (myGen !== loadGenRef.current) return;
@@ -810,13 +928,24 @@ export default function App() {
         );
       }
     },
-    [connectKlineSocket, prependOlderCandles]
+    [applyKlineBars, connectKlineSocket, fetchChartBatch, prependOlderCandles, scheduleSiblingWarmup]
   );
 
-  // Boot initial chart
+  // Boot initial chart + gently pre-warm top 5 watchlist coins in background
   useEffect(() => {
     loadSymbolChart('BTCUSDT', '1d');
+    const topWarmTimers: number[] = [];
+    const topSyms = watchlist.slice(0, 6).map((w) => w.sym).filter((s) => s !== 'BTCUSDT');
+    topSyms.forEach((sym, idx) => {
+      topWarmTimers.push(
+        window.setTimeout(() => {
+          prefetchChart(sym, intervalRef.current);
+        }, 950 + idx * 220)
+      );
+    });
     return () => {
+      topWarmTimers.forEach((t) => window.clearTimeout(t));
+      warmTimersRef.current.forEach((t) => window.clearTimeout(t));
       if (klineWsRef.current) {
         klineWsRef.current.close();
       }
@@ -1575,6 +1704,7 @@ export default function App() {
         symbolMeta={symbolMeta}
         interval={interval}
         onIntervalChange={(tf) => loadSymbolChart(currentSymbol, tf)}
+        onPrefetchInterval={(tf) => prefetchChart(currentSymbol, tf)}
         chartType={chartType}
         onChartTypeChange={setChartType}
         activeIndicatorCount={activeIndicatorCount}
@@ -1771,6 +1901,7 @@ export default function App() {
           avgVolume30d={avgVolume30d}
           currentSymbol={currentSymbol}
           onSelectSymbol={(sym) => loadSymbolChart(sym, interval)}
+          onPrefetchSymbol={(sym) => prefetchChart(sym, interval)}
           onRemoveSymbol={handleToggleWatchlist}
           onOpenSearch={() => setSearchOpen(true)}
           alerts={alerts}

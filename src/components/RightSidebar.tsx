@@ -76,6 +76,7 @@ interface RightSidebarProps {
   avgVolume30d: number;
   currentSymbol: string;
   onSelectSymbol: (sym: string) => void;
+  onPrefetchSymbol?: (sym: string) => void;
   onRemoveSymbol: (sym: string) => void;
   onOpenSearch: () => void;
   alerts: PriceAlert[];
@@ -123,6 +124,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   avgVolume30d,
   currentSymbol,
   onSelectSymbol,
+  onPrefetchSymbol,
   onRemoveSymbol,
   onOpenSearch,
   alerts,
@@ -1350,6 +1352,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         onDragOver={(e) => handleDragOver(e, w.sym)}
                         onDrop={(e) => handleDrop(e, w.sym)}
                         onDragEnd={handleDragEnd}
+                        onMouseEnter={() => onPrefetchSymbol?.(w.sym)}
                         onClick={() => onSelectSymbol(w.sym)}
                         style={gridColsStyle}
                         className={`group relative grid items-center pl-0 pr-2 h-[32px] text-[13px] font-normal cursor-pointer transition-colors border-b border-[var(--border)]/45 ${
