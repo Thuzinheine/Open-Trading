@@ -131,11 +131,15 @@ export default function App() {
   // Chart state
   const [currentSymbol, setCurrentSymbol] = useState<string>('BTCUSDT');
   const [interval, setIntervalState] = useState<Timeframe>('1d');
+  const [chartDataMeta, setChartDataMeta] = useState<{ sym: string; tf: Timeframe }>({
+    sym: 'BTCUSDT',
+    tf: '1d',
+  });
   const [chartType, setChartType] = useState<ChartType>('candles');
   const [candles, setCandles] = useState<CandleBar[]>([]);
   const [volumes, setVolumes] = useState<VolumeBar[]>([]);
   const [candleCloseMs, setCandleCloseMs] = useState<number>(0);
-  const [loadingText, setLoadingText] = useState<string | null>('Loading Binance data...');
+  const [loadingText, setLoadingText] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<'live' | 'connecting' | 'error'>('connecting');
 
   // Tickers map
@@ -172,6 +176,11 @@ export default function App() {
   // Refs for async safety
   const chartWorkspaceRef = useRef<ChartWorkspaceHandle>(null);
   const loadGenRef = useRef<number>(0);
+  const isChartLoadingRef = useRef<boolean>(false);
+  const loadedChartRef = useRef<{ sym: string; tf: Timeframe } | null>(null);
+  const chartCacheRef = useRef<
+    Map<string, { candles: CandleBar[]; volumes: VolumeBar[]; closeMs: number }>
+  >(new Map());
   const isFetchingHistoryRef = useRef<boolean>(false);
   const hasMoreHistoryRef = useRef<boolean>(true);
   const klineWsRef = useRef<ManagedBinanceSocket | null>(null);
@@ -186,6 +195,8 @@ export default function App() {
   candleCloseMsRef.current = candleCloseMs;
   const candlesRef = useRef<CandleBar[]>([]);
   candlesRef.current = candles;
+  const volumesRef = useRef<VolumeBar[]>([]);
+  volumesRef.current = volumes;
   const currentSymRef = useRef(currentSymbol);
   currentSymRef.current = currentSymbol;
   const intervalRef = useRef(interval);
@@ -468,7 +479,15 @@ export default function App() {
 
       evaluatePriceTriggers(sym, price);
 
-      if (isReplayRef.current || sym !== currentSymRef.current) return;
+      if (
+        isReplayRef.current ||
+        isChartLoadingRef.current ||
+        !loadedChartRef.current ||
+        loadedChartRef.current.sym !== sym ||
+        sym !== currentSymRef.current
+      ) {
+        return;
+      }
 
       let candleDirectionChanged = false;
       let isBullNow = true;
@@ -512,8 +531,23 @@ export default function App() {
 
   // Merge authoritative kline bars (from @kline WS or 1s REST heartbeat)
   const applyKlineBars = useCallback(
-    (sym: string, incomingCandles: CandleBar[], incomingVolumes: VolumeBar[], closeTimeMs: number) => {
-      if (!incomingCandles.length || sym !== currentSymRef.current) return;
+    (
+      sym: string,
+      tf: Timeframe,
+      incomingCandles: CandleBar[],
+      incomingVolumes: VolumeBar[],
+      closeTimeMs: number
+    ) => {
+      if (
+        !incomingCandles.length ||
+        isChartLoadingRef.current ||
+        !loadedChartRef.current ||
+        loadedChartRef.current.sym !== sym ||
+        loadedChartRef.current.tf !== tf ||
+        sym !== currentSymRef.current
+      ) {
+        return;
+      }
       const latestBar = incomingCandles[incomingCandles.length - 1];
       if (closeTimeMs > 0) setCandleCloseMs(closeTimeMs);
 
@@ -662,7 +696,7 @@ export default function App() {
                       ? 'rgba(8, 153, 129, 0.48)'
                       : 'rgba(242, 54, 69, 0.48)',
                 };
-                applyKlineBars(sym, [bar], [volBar], k.T);
+                applyKlineBars(sym, tf, [bar], [volBar], k.T);
               }
             } catch {}
           },
@@ -680,7 +714,7 @@ export default function App() {
     [applyKlineBars, applyLiveTradePrice]
   );
 
-  // Load Symbol + Timeframe history
+  // Load Symbol + Timeframe history (atomic swap — never leaks previous coin's candles or flashes Loading text)
   const loadSymbolChart = useCallback(
     async (sym: string, tf: Timeframe) => {
       loadGenRef.current += 1;
@@ -690,6 +724,21 @@ export default function App() {
         klineWsRef.current.close();
         klineWsRef.current = null;
       }
+      if (tradeFlushTimerRef.current !== null) {
+        window.clearTimeout(tradeFlushTimerRef.current);
+        tradeFlushTimerRef.current = null;
+      }
+      pendingTradePriceRef.current = null;
+
+      // Save current loaded chart into cache before leaving it
+      if (loadedChartRef.current && candlesRef.current.length > 0 && !isChartLoadingRef.current) {
+        const prevKey = `${loadedChartRef.current.sym}_${loadedChartRef.current.tf}`;
+        chartCacheRef.current.set(prevKey, {
+          candles: candlesRef.current,
+          volumes: volumesRef.current,
+          closeMs: candleCloseMsRef.current,
+        });
+      }
 
       setCurrentSymbol(sym);
       setIntervalState(tf);
@@ -698,7 +747,23 @@ export default function App() {
       setIsReplayPlaying(false);
       hasMoreHistoryRef.current = true;
       isFetchingHistoryRef.current = false;
-      setLoadingText(`Loading ${sym} (${tf.toUpperCase()})...`);
+      setLoadingText(null);
+
+      // Instant 0ms switch if we already cached this coin+timeframe, then refresh seamlessly in background
+      const cacheKey = `${sym}_${tf}`;
+      const cached = chartCacheRef.current.get(cacheKey);
+      if (cached && cached.candles.length > 0) {
+        isChartLoadingRef.current = false;
+        loadedChartRef.current = { sym, tf };
+        setChartDataMeta({ sym, tf });
+        setCandles(cached.candles);
+        setVolumes(cached.volumes);
+        setCandleCloseMs(cached.closeMs);
+        lastChartTickMsRef.current = Date.now();
+      } else {
+        // Block any live price ticks from mutating the previous coin's candles while fetching!
+        isChartLoadingRef.current = true;
+      }
 
       try {
         const raw = await fetchBinance<unknown[][]>(
@@ -709,9 +774,20 @@ export default function App() {
         if (!Array.isArray(raw) || raw.length === 0) throw new Error('Empty klines');
 
         const parsed = parseKlines(raw);
+        const closeMs = Number(raw[raw.length - 1][6]);
+
+        loadedChartRef.current = { sym, tf };
+        isChartLoadingRef.current = false;
+        chartCacheRef.current.set(cacheKey, {
+          candles: parsed.candles,
+          volumes: parsed.volumes,
+          closeMs,
+        });
+
+        setChartDataMeta({ sym, tf });
         setCandles(parsed.candles);
         setVolumes(parsed.volumes);
-        setCandleCloseMs(Number(raw[raw.length - 1][6]));
+        setCandleCloseMs(closeMs);
         lastChartTickMsRef.current = Date.now();
         setLoadingText(null);
 
@@ -727,6 +803,7 @@ export default function App() {
         }
       } catch (err) {
         if (myGen !== loadGenRef.current) return;
+        isChartLoadingRef.current = false;
         setWsStatus('error');
         setLoadingText(
           `Failed to load ${sym} (${err instanceof Error ? err.message : 'API error'})`
@@ -843,7 +920,11 @@ export default function App() {
 
           if (d.s !== currentSymRef.current) {
             evaluatePriceTriggers(d.s, last);
-          } else if (Date.now() - lastChartTickMsRef.current > 900) {
+          } else if (
+            !isChartLoadingRef.current &&
+            loadedChartRef.current?.sym === d.s &&
+            Date.now() - lastChartTickMsRef.current > 900
+          ) {
             applyLiveTradePrice(d.s, last);
           }
         } catch {}
@@ -865,12 +946,14 @@ export default function App() {
       // 1. Active chart live candle heartbeat if WS hasn't pushed in >1.6s or bar just rolled over
       const barRolledOver = candleCloseMsRef.current > 0 && now >= candleCloseMsRef.current + 350;
       if (
+        !isChartLoadingRef.current &&
+        loadedChartRef.current &&
         candlesRef.current.length > 0 &&
         !chartPollBusyRef.current &&
         (now - lastChartTickMsRef.current > 1600 || barRolledOver)
       ) {
-        const sym = currentSymRef.current;
-        const tf = intervalRef.current;
+        const sym = loadedChartRef.current.sym;
+        const tf = loadedChartRef.current.tf;
         const gen = loadGenRef.current;
         chartPollBusyRef.current = true;
         try {
@@ -882,7 +965,7 @@ export default function App() {
             const parsed = parseKlines(raw);
             lastChartTickMsRef.current = Date.now();
             setWsStatus('live');
-            applyKlineBars(sym, parsed.candles, parsed.volumes, Number(raw[raw.length - 1][6]));
+            applyKlineBars(sym, tf, parsed.candles, parsed.volumes, Number(raw[raw.length - 1][6]));
           }
         } catch {
           // ignore transient poll error
@@ -1456,7 +1539,10 @@ export default function App() {
     letter: currentSymbol[0] || 'C',
   };
 
-  const currentPrice = candles[candles.length - 1]?.close || tickerMap[currentSymbol]?.last || 0;
+  const currentPrice =
+    (chartDataMeta.sym === currentSymbol ? candles[candles.length - 1]?.close : undefined) ||
+    tickerMap[currentSymbol]?.last ||
+    0;
 
   // Live browser tab title synced with active symbol & real-time price
   useEffect(() => {
@@ -1571,10 +1657,17 @@ export default function App() {
         <main className="flex-1 flex flex-col min-w-0 min-h-0 rounded-[6px] overflow-hidden bg-[var(--bg-app)]">
           <ChartWorkspace
             ref={chartWorkspaceRef}
-            symbol={currentSymbol}
-            symbolMeta={symbolMeta}
-            tickerData={tickerMap[currentSymbol]}
-            interval={interval}
+            symbol={chartDataMeta.sym}
+            symbolMeta={
+              watchlist.find((w) => w.sym === chartDataMeta.sym) || {
+                sym: chartDataMeta.sym,
+                name: `${chartDataMeta.sym.replace('USDT', '')} / TetherUS`,
+                color: '#2962ff',
+                letter: chartDataMeta.sym[0] || 'C',
+              }
+            }
+            tickerData={tickerMap[chartDataMeta.sym]}
+            interval={chartDataMeta.tf}
             chartType={chartType}
             isDarkMode={isDarkMode}
             chartSettings={chartSettings}
