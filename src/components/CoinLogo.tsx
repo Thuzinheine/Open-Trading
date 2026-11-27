@@ -238,6 +238,7 @@ export const FlagRibbon: React.FC<FlagRibbonProps> = ({
 
 interface SplitPriceProps {
   formatted: string;
+  prevFormatted?: string;
   isUp: boolean;
   className?: string;
   highlightTail?: number;
@@ -245,6 +246,7 @@ interface SplitPriceProps {
 
 export const SplitPrice: React.FC<SplitPriceProps> = ({
   formatted,
+  prevFormatted,
   isUp,
   className = '',
   highlightTail,
@@ -252,18 +254,34 @@ export const SplitPrice: React.FC<SplitPriceProps> = ({
   if (!formatted || formatted === '-') {
     return <span className={className}>-</span>;
   }
-  const dotIdx = formatted.indexOf('.');
-  if (dotIdx === -1) {
-    return <span className={className}>{formatted}</span>;
+
+  let splitAt = -1;
+
+  // TradingView-style diff highlighting: color from the first changed digit onward
+  if (prevFormatted && prevFormatted !== formatted && prevFormatted.length === formatted.length) {
+    for (let i = 0; i < formatted.length; i++) {
+      if (formatted[i] !== prevFormatted[i]) {
+        splitAt = i;
+        break;
+      }
+    }
   }
-  const decimals = formatted.slice(dotIdx + 1);
-  const tailLen = highlightTail ?? (decimals.length >= 3 ? 2 : 1);
-  const splitAt = Math.max(dotIdx + 1, formatted.length - tailLen);
+
+  if (splitAt === -1) {
+    const dotIdx = formatted.indexOf('.');
+    if (dotIdx === -1) {
+      return <span className={className}>{formatted}</span>;
+    }
+    const decimals = formatted.slice(dotIdx + 1);
+    const tailLen = highlightTail ?? (decimals.length >= 3 ? 2 : 1);
+    splitAt = Math.max(dotIdx + 1, formatted.length - tailLen);
+  }
+
   const head = formatted.slice(0, splitAt);
   const tail = formatted.slice(splitAt);
   return (
     <span className={className}>
-      <span>{head}</span>
+      {head && <span>{head}</span>}
       <span className={isUp ? 'text-[#089981]' : 'text-[#f23645]'}>{tail}</span>
     </span>
   );

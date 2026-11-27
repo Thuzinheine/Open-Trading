@@ -661,7 +661,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         layout: {
           background: { type: ColorType.Solid, color: 'transparent' },
           textColor: isDarkMode ? '#d1d4dc' : '#131722',
-          fontFamily: '"Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
+          fontSize: 11,
         },
         grid: {
           vertLines: { color: isDarkMode ? '#1e222d' : '#f0f3fa' },
@@ -911,7 +912,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         layout: {
           background: { type: ColorType.Solid, color: 'transparent' },
           textColor: isDarkMode ? '#d1d4dc' : '#131722',
-          fontFamily: '"JetBrains Mono", monospace',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
           fontSize: 10,
         },
         grid: {
@@ -1030,7 +1031,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               ? { type: ColorType.VerticalGradient, topColor: bg1, bottomColor: bg2 }
               : { type: ColorType.Solid, color: cv.backgroundColor ? bg1 : 'transparent' },
           textColor: txtCol,
-          fontSize: cv.scaleFontSize || 12,
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
+          fontSize: cv.scaleFontSize || 11,
         },
         grid: {
           vertLines: { visible: cv.vertGridEnabled, color: vGridCol },
@@ -1294,7 +1296,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           ? getPrecision(lastClose)
           : parseInt(chartSettings.symbol.precision, 10);
       const minMove = Math.pow(10, -prec);
-      const priceFormat = { type: 'price' as const, precision: prec, minMove };
+      const priceFormat = {
+        type: 'custom' as const,
+        minMove,
+        formatter: (price: number) => fmtPrice(price, prec),
+      };
 
       cs.applyOptions({ priceFormat });
       ls.applyOptions({ priceFormat });
@@ -3443,7 +3449,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               <div
                 className={`absolute ${
                   chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
-                } z-10 bg-[#2962ff] text-white text-[10px] font-mono-num font-semibold px-1.5 py-[1px] rounded-b-[2px] pointer-events-none leading-tight text-center`}
+                } z-10 ${
+                  (effectiveCandles[effectiveCandles.length - 1]?.close ?? 0) >=
+                  (effectiveCandles[effectiveCandles.length - 1]?.open ?? 0)
+                    ? 'bg-[#089981]'
+                    : 'bg-[#f23645]'
+                } text-white text-[10.5px] font-mono-num font-normal px-1.5 py-[1px] rounded-b-[2px] pointer-events-none leading-tight text-left`}
                 style={{
                   top: `${countdownTop - 2}px`,
                   minWidth: `${Math.max(54, rightScaleWidth - 2)}px`,

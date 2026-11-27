@@ -152,13 +152,110 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [sectionDraft, setSectionDraft] = useState('');
 
-  // Symbol details controls + resizable split ratio
+  // Symbol details controls + resizable split ratio & Watchlist column widths
   const [showExtendedDetails, setShowExtendedDetails] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [watchlistRatio, setWatchlistRatio] = useState<number>(46);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const detailsScrollRef = useRef<HTMLDivElement>(null);
   const technicalsRef = useRef<HTMLDivElement>(null);
+
+  type ColWidthKey = 'last' | 'chg' | 'chgPct' | 'volume' | 'extHours';
+  const DEFAULT_COL_WIDTHS: Record<ColWidthKey, number> = {
+    last: 76,
+    chg: 62,
+    chgPct: 58,
+    volume: 58,
+    extHours: 48,
+  };
+  const [colWidths, setColWidths] = useState<Record<ColWidthKey, number>>(() => {
+    try {
+      const raw = localStorage.getItem('tp_watchlist_col_widths_v1');
+      if (raw) return { ...DEFAULT_COL_WIDTHS, ...JSON.parse(raw) };
+    } catch {}
+    return DEFAULT_COL_WIDTHS;
+  });
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem('tp_watchlist_sidebar_w_v1'));
+      if (Number.isFinite(saved) && saved >= 270 && saved <= 520) return saved;
+    } catch {}
+    return 326;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tp_watchlist_col_widths_v1', JSON.stringify(colWidths));
+    } catch {}
+  }, [colWidths]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tp_watchlist_sidebar_w_v1', String(sidebarWidth));
+    } catch {}
+  }, [sidebarWidth]);
+
+  const handleStartResizeSidebar = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    document.body.style.cursor = 'col-resize';
+    const onMove = (ev: MouseEvent) => {
+      const delta = startX - ev.clientX;
+      setSidebarWidth(Math.max(270, Math.min(520, startW + delta)));
+    };
+    const onUp = () => {
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const handleStartResizeCol = (
+    e: React.MouseEvent,
+    leftKey: 'symbol' | ColWidthKey,
+    rightKey: ColWidthKey
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startRight = colWidths[rightKey];
+    const startLeft = leftKey === 'symbol' ? 0 : colWidths[leftKey];
+    document.body.style.cursor = 'col-resize';
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      setColWidths((prev) => {
+        if (leftKey === 'symbol') {
+          // Moving divider between Symbol (flex) and right column shrinks/grows right column
+          const nextRight = Math.max(46, Math.min(130, startRight - dx));
+          return { ...prev, [rightKey]: nextRight };
+        }
+        // Moving divider between two numeric columns trades width smoothly between them
+        const nextLeft = Math.max(44, Math.min(130, startLeft + dx));
+        const actualDelta = nextLeft - startLeft;
+        const nextRight = Math.max(44, Math.min(130, startRight - actualDelta));
+        const clampedLeft = startLeft + (startRight - nextRight);
+        return { ...prev, [leftKey]: clampedLeft, [rightKey]: nextRight };
+      });
+    };
+
+    const onUp = () => {
+      document.body.style.cursor = '';
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const handleResetColWidths = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setColWidths(DEFAULT_COL_WIDTHS);
+  };
 
   // Drag & Drop state
   const [dragSym, setDragSym] = useState<string | null>(null);
@@ -510,19 +607,24 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   const volRatioPct =
     avgVolDisplay > 0 ? Math.max(4, Math.min(100, (liveVolBase / Math.max(liveVolBase, avgVolDisplay)) * 100)) : 28;
 
-  // Dynamic column template
+  // Dynamic resizable column template (Symbol fluid + draggable px widths for numeric columns)
   const cols = watchlistPrefs.columns;
-  const gridColsStyle = useMemo(() => {
-    const parts = ['minmax(108px, 1.35fr)'];
-    if (cols.last) parts.push('minmax(66px, 0.9fr)');
-    if (cols.chg) parts.push('minmax(54px, 0.72fr)');
-    if (cols.chgPct) parts.push('minmax(52px, 0.72fr)');
-    if (cols.volume) parts.push('minmax(56px, 0.72fr)');
-    if (cols.extHours) parts.push('minmax(46px, 0.6fr)');
-    return { gridTemplateColumns: parts.join(' ') };
+  const visibleRightCols = useMemo<ColWidthKey[]>(() => {
+    const list: ColWidthKey[] = [];
+    if (cols.last) list.push('last');
+    if (cols.chg) list.push('chg');
+    if (cols.chgPct) list.push('chgPct');
+    if (cols.volume) list.push('volume');
+    if (cols.extHours) list.push('extHours');
+    return list;
   }, [cols]);
 
-  const sidebarWidthClass = watchlistPrefs.tableView ? 'w-[390px]' : 'w-[318px]';
+  const gridColsStyle = useMemo(() => {
+    const parts = ['minmax(92px, 1fr)', ...visibleRightCols.map((k) => `${colWidths[k]}px`)];
+    return { gridTemplateColumns: parts.join(' ') };
+  }, [visibleRightCols, colWidths]);
+
+  const effectiveSidebarWidth = watchlistPrefs.tableView ? Math.max(sidebarWidth, 396) : sidebarWidth;
 
   // Order book stats
   const maxAskTotal = asks.length ? Math.max(...asks.map((a) => a.total)) : 1;
@@ -548,8 +650,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       {visible && (
         <aside
           ref={splitContainerRef}
-          className={`${sidebarWidthClass} hidden lg:flex flex-col bg-[var(--bg-surface)] rounded-[6px] overflow-hidden h-full transition-[width] duration-150`}
+          style={{ width: `${effectiveSidebarWidth}px` }}
+          className="relative hidden lg:flex flex-col bg-[var(--bg-surface)] rounded-[6px] overflow-hidden h-full"
         >
+          {/* Draggable left-edge sidebar width resizer */}
+          <div
+            onMouseDown={handleStartResizeSidebar}
+            onDoubleClick={() => setSidebarWidth(326)}
+            title="Drag to resize panel width (Double-click to reset)"
+            className="absolute left-0 top-0 bottom-0 w-[4px] cursor-col-resize hover:bg-[var(--accent)]/40 z-30 transition-colors"
+          />
           {/* WATCHLIST TAB */}
           {activeTab === 'watchlist' && activeList && (
             <>
@@ -1007,80 +1117,83 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 </div>
               )}
 
-              {/* Column Headers (Exact TradingView: Symbol | Last | Chg | Chg%) */}
+              {/* Resizable Column Headers (Exact TradingView: Symbol | Last | Chg | Chg%) */}
               <div
                 style={gridColsStyle}
-                className="grid items-center px-2.5 py-1.5 text-[11.5px] font-normal text-[var(--text-muted)] border-b border-[var(--border)] shrink-0"
+                className="grid items-stretch h-[29px] px-2 text-[12px] font-normal text-[var(--text-muted)] border-b border-[var(--border)] shrink-0"
               >
-                <button
-                  type="button"
-                  onClick={() => handleSort('sym')}
-                  className="text-left inline-flex items-center gap-1 hover:text-[var(--text-main)] cursor-pointer pl-1"
-                >
-                  <span>Symbol</span>
-                  {sortKey === 'sym' && (
-                    <span className="text-[9px] text-[var(--accent)]">
-                      {sortDir === 'asc' ? '▲' : '▼'}
-                    </span>
+                <div className="relative flex items-center min-w-0 pr-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSort('sym')}
+                    className="w-full h-full text-left inline-flex items-center gap-1 hover:text-[var(--text-main)] cursor-pointer pl-1.5 truncate"
+                  >
+                    <span>Symbol</span>
+                    {sortKey === 'sym' && (
+                      <span className="text-[9px] text-[var(--accent)]">
+                        {sortDir === 'asc' ? '▲' : '▼'}
+                      </span>
+                    )}
+                  </button>
+                  {visibleRightCols.length > 0 && (
+                    <div
+                      onMouseDown={(e) => handleStartResizeCol(e, 'symbol', visibleRightCols[0])}
+                      onDoubleClick={handleResetColWidths}
+                      title="Drag to resize column (Double-click to reset)"
+                      className="absolute right-0 top-1 bottom-1 w-[7px] -mr-[3px] flex items-center justify-center cursor-col-resize group/resizer z-10"
+                    >
+                      <span className="w-px h-full bg-[var(--border)] group-hover/resizer:w-[2px] group-hover/resizer:bg-[var(--accent)] transition-colors" />
+                    </div>
                   )}
-                </button>
-                {cols.last && (
-                  <button
-                    type="button"
-                    onClick={() => handleSort('last')}
-                    className="text-right inline-flex items-center justify-end gap-1 hover:text-[var(--text-main)] cursor-pointer"
-                  >
-                    <span>Last</span>
-                    {sortKey === 'last' && (
-                      <span className="text-[9px] text-[var(--accent)]">
-                        {sortDir === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </button>
-                )}
-                {cols.chg && (
-                  <button
-                    type="button"
-                    onClick={() => handleSort('chg')}
-                    className="text-right inline-flex items-center justify-end gap-1 hover:text-[var(--text-main)] cursor-pointer"
-                  >
-                    <span>Chg</span>
-                    {sortKey === 'chg' && (
-                      <span className="text-[9px] text-[var(--accent)]">
-                        {sortDir === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </button>
-                )}
-                {cols.chgPct && (
-                  <button
-                    type="button"
-                    onClick={() => handleSort('pct')}
-                    className="text-right inline-flex items-center justify-end gap-1 hover:text-[var(--text-main)] cursor-pointer"
-                  >
-                    <span>Chg%</span>
-                    {sortKey === 'pct' && (
-                      <span className="text-[9px] text-[var(--accent)]">
-                        {sortDir === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </button>
-                )}
-                {cols.volume && (
-                  <button
-                    type="button"
-                    onClick={() => handleSort('vol')}
-                    className="text-right inline-flex items-center justify-end gap-1 hover:text-[var(--text-main)] cursor-pointer"
-                  >
-                    <span>Vol</span>
-                    {sortKey === 'vol' && (
-                      <span className="text-[9px] text-[var(--accent)]">
-                        {sortDir === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </button>
-                )}
-                {cols.extHours && <span className="text-right">24h</span>}
+                </div>
+
+                {visibleRightCols.map((colKey, idx) => {
+                  const nextKey = visibleRightCols[idx + 1];
+                  const colMeta: Record<
+                    ColWidthKey,
+                    { label: string; sort?: SortKey }
+                  > = {
+                    last: { label: 'Last', sort: 'last' },
+                    chg: { label: 'Chg', sort: 'chg' },
+                    chgPct: { label: 'Chg%', sort: 'pct' },
+                    volume: { label: 'Vol', sort: 'vol' },
+                    extHours: { label: '24h' },
+                  };
+                  const meta = colMeta[colKey];
+                  const isSorted = meta.sort && sortKey === meta.sort;
+
+                  return (
+                    <div key={colKey} className="relative flex items-center justify-end min-w-0 px-1.5">
+                      {meta.sort ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSort(meta.sort!)}
+                          className="w-full h-full text-right inline-flex items-center justify-end gap-1 hover:text-[var(--text-main)] cursor-pointer truncate"
+                        >
+                          <span>{meta.label}</span>
+                          {isSorted && (
+                            <span className="text-[9px] text-[var(--accent)]">
+                              {sortDir === 'asc' ? '▲' : '▼'}
+                            </span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="w-full text-right truncate">{meta.label}</span>
+                      )}
+
+                      {nextKey && (
+                        <div
+                          onMouseDown={(e) => handleStartResizeCol(e, colKey, nextKey)}
+                          onDoubleClick={handleResetColWidths}
+                          title="Drag to resize column (Double-click to reset)"
+                          className="absolute right-0 top-1 bottom-1 w-[7px] -mr-[3px] flex items-center justify-center cursor-col-resize group/resizer z-10"
+                        >
+                          <span className="w-px h-full bg-[var(--border)] group-hover/resizer:w-[2px] group-hover/resizer:bg-[var(--accent)] transition-colors" />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               {/* Watchlist Scrollable Rows with Drag & Drop (Resizable upper pane) */}
@@ -1239,11 +1352,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         onDragEnd={handleDragEnd}
                         onClick={() => onSelectSymbol(w.sym)}
                         style={gridColsStyle}
-                        className={`group relative grid items-center pl-0.5 pr-2.5 h-[33px] text-[12.5px] cursor-pointer transition-colors border-b border-[var(--border)]/45 ${
+                        className={`group relative grid items-center pl-0 pr-2 h-[32px] text-[13px] font-normal cursor-pointer transition-colors border-b border-[var(--border)]/45 ${
                           isDragging ? 'opacity-40' : ''
                         } ${
                           isActive
-                            ? 'ring-1 ring-inset ring-[var(--text-main)] rounded-[6px] bg-[var(--bg-elevated)]/40 z-[1]'
+                            ? 'ring-1 ring-inset ring-[var(--text-main)] rounded-[4px] bg-[var(--bg-surface)] z-[1]'
                             : 'hover:bg-[var(--bg-hover)]/75'
                         }`}
                       >
@@ -1256,14 +1369,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         )}
 
                         {/* Column 1: Flag + Logo + Symbol/Name */}
-                        <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                        <div className="flex items-center gap-1.5 min-w-0 pr-1.5">
                           <button
                             type="button"
                             onClick={(e) => cycleFlagColor(e, w.sym)}
                             title="Flag symbol (click to cycle color)"
-                            className="w-3.5 h-5 inline-flex items-center justify-center shrink-0 text-[var(--text-muted)] cursor-pointer"
+                            className="w-3 h-5 inline-flex items-center justify-center shrink-0 text-[var(--text-muted)] cursor-pointer"
                           >
-                            <FlagRibbon color={w.flagColor} size={11} />
+                            <FlagRibbon color={w.flagColor} size={10} />
                           </button>
 
                           {watchlistPrefs.showLogo && (
@@ -1275,16 +1388,22 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                             />
                           )}
 
-                          <span className="font-medium text-[var(--text-main)] truncate tracking-[-0.01em]">
+                          <span className="font-normal text-[var(--text-main)] truncate">
                             {watchlistPrefs.symbolDisplay === 'name' ? shortName : w.sym}
                           </span>
                         </div>
 
-                        {/* Column 2: Last Price (TradingView split-color last digit!) */}
+                        {/* Column 2: Last Price (Exact TradingView diff-highlighted live digits) */}
                         {cols.last && (
-                          <span className="text-right font-mono-num text-[var(--text-main)] font-normal tabular-nums">
+                          <span className="text-right font-mono-num text-[var(--text-main)] font-normal tabular-nums px-1.5 truncate">
                             {t ? (
-                              <SplitPrice formatted={fmtPrice(t.last)} isUp={tickUp} />
+                              <SplitPrice
+                                formatted={fmtPrice(t.last)}
+                                prevFormatted={
+                                  t.prevLast !== undefined ? fmtPrice(t.prevLast) : undefined
+                                }
+                                isUp={tickUp}
+                              />
                             ) : (
                               '-'
                             )}
@@ -1294,7 +1413,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         {/* Column 3: Chg */}
                         {cols.chg && (
                           <span
-                            className={`text-right font-mono-num tabular-nums ${
+                            className={`text-right font-mono-num font-normal tabular-nums px-1.5 truncate ${
                               t
                                 ? isUp
                                   ? 'text-[#089981]'
@@ -1311,7 +1430,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         {/* Column 4: Chg% */}
                         {cols.chgPct && (
                           <span
-                            className={`text-right font-mono-num tabular-nums ${
+                            className={`text-right font-mono-num font-normal tabular-nums px-1.5 truncate ${
                               t
                                 ? isUp
                                   ? 'text-[#089981]'
@@ -1325,14 +1444,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
                         {/* Optional Column 5: Volume */}
                         {cols.volume && (
-                          <span className="text-right font-mono-num tabular-nums text-[var(--text-muted)] text-[11.5px]">
+                          <span className="text-right font-mono-num font-normal tabular-nums text-[var(--text-muted)] text-[12px] px-1.5 truncate">
                             {t ? fmtCompact(t.baseVol ?? (t.last > 0 ? t.vol / t.last : 0)) : '-'}
                           </span>
                         )}
 
                         {/* Optional Column 6: Extended / 24h Range */}
                         {cols.extHours && (
-                          <span className="text-right font-mono-num tabular-nums text-[var(--text-muted)] text-[11px]">
+                          <span className="text-right font-mono-num font-normal tabular-nums text-[var(--text-muted)] text-[12px] px-1.5 truncate">
                             {t && t.low > 0
                               ? `${(((t.high - t.low) / t.low) * 100).toFixed(1)}%`
                               : '-'}

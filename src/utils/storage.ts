@@ -374,7 +374,7 @@ export const DEFAULT_CHART_SETTINGS: ChartSettings = {
     watermarkMode: 'replay',
     watermarkColor: 'rgba(120, 123, 134, 0.14)',
     scaleTextColor: '',
-    scaleFontSize: 12,
+    scaleFontSize: 11,
     scaleLineColor: '',
     marginTop: 8,
     marginBottom: 20,
@@ -417,7 +417,7 @@ export const DEFAULT_CHART_SETTINGS: ChartSettings = {
 
 export function loadChartSettings(): ChartSettings {
   const stored = safeRead<Partial<ChartSettings>>(KEYS.CHART_SETTINGS, {});
-  return {
+  const merged: ChartSettings = {
     symbol: { ...DEFAULT_CHART_SETTINGS.symbol, ...stored.symbol },
     statusLine: { ...DEFAULT_CHART_SETTINGS.statusLine, ...stored.statusLine },
     scales: { ...DEFAULT_CHART_SETTINGS.scales, ...stored.scales },
@@ -426,6 +426,13 @@ export function loadChartSettings(): ChartSettings {
     alerts: { ...DEFAULT_CHART_SETTINGS.alerts, ...stored.alerts },
     events: { ...DEFAULT_CHART_SETTINGS.events, ...stored.events },
   };
+  try {
+    if (merged.canvas.scaleFontSize === 12 && !localStorage.getItem('tp_scale_font_v2')) {
+      merged.canvas.scaleFontSize = 11;
+      localStorage.setItem('tp_scale_font_v2', '1');
+    }
+  } catch {}
+  return merged;
 }
 
 export function saveChartSettings(settings: ChartSettings): void {
