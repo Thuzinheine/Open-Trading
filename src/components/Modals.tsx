@@ -3,6 +3,7 @@ import { Search, X, Bell, Plus, Check, RotateCcw } from 'lucide-react';
 import { IndicatorConfig, TickerData, WatchlistItem } from '../types/trading';
 import { fetchBinance, fmtCompact, fmtPrice } from '../utils/binance';
 import { DEFAULT_INDICATORS } from '../utils/storage';
+import { CoinLogo } from './CoinLogo';
 
 /* ==================== SYMBOL SEARCH MODAL ==================== */
 interface SymbolSearchModalProps {
@@ -142,6 +143,7 @@ export const SymbolSearchModal: React.FC<SymbolSearchModalProps> = ({
                     >
                       {inWl ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
                     </button>
+                    <CoinLogo symbol={item.symbol} size={22} />
                     <div>
                       <div className="font-bold text-[13px] text-[var(--text-main)]">
                         {item.symbol}

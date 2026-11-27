@@ -1572,7 +1572,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         <MoreHorizontal className="w-[16px] h-[16px]" strokeWidth={1.7} />
                       </button>
                       {detailsMoreOpen && (
-                        <div className="absolute right-0 bottom-8 w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 z-50 text-xs text-[var(--text-main)]">
+                        <div className="absolute right-0 top-8 w-48 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-50 text-xs text-[var(--text-main)]">
                           <button
                             type="button"
                             onClick={() => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface CoinLogoProps {
   symbol: string;
@@ -24,7 +24,45 @@ export function getCoinSector(sym: string): string {
   if (['DOGE', 'SHIB', 'PEPE', 'WIF', 'FLOKI', 'BONK'].includes(base)) {
     return 'Meme';
   }
+  if (['PAXG', 'XAU'].includes(base)) {
+    return 'Commodities';
+  }
   return 'Crypto';
+}
+
+// Cache the first working CDN tier per ticker so re-renders never flicker or re-fetch 404s
+const logoTierCache = new Map<string, number>();
+
+const FALLBACK_PALETTE = [
+  '#2962ff',
+  '#089981',
+  '#f59e0b',
+  '#8b5cf6',
+  '#ec4899',
+  '#06b6d4',
+  '#ef4444',
+  '#10b981',
+  '#6366f1',
+  '#f97316',
+];
+
+function getDeterministicColor(ticker: string, preferred?: string): string {
+  if (preferred && preferred !== '#2962ff') return preferred;
+  let hash = 0;
+  for (let i = 0; i < ticker.length; i++) {
+    hash = (hash * 31 + ticker.charCodeAt(i)) >>> 0;
+  }
+  return FALLBACK_PALETTE[hash % FALLBACK_PALETTE.length];
+}
+
+function getLogoUrls(baseUpper: string): string[] {
+  const cleanUpper = baseUpper.replace(/^1000(?=[A-Z]{2,})/, '');
+  const lower = cleanUpper.toLowerCase();
+  return [
+    `https://bin.bnbstatic.com/static/assets/logos/${cleanUpper}.png`,
+    `https://assets.coincap.io/assets/icons/${lower}@2x.png`,
+    `https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/128/color/${lower}.png`,
+  ];
 }
 
 export const CoinLogo: React.FC<CoinLogoProps> = ({
@@ -34,8 +72,16 @@ export const CoinLogo: React.FC<CoinLogoProps> = ({
   size = 18,
   className = '',
 }) => {
-  const base = symbol.replace(/USDT$|BUSD$|FDUSD$|USDC$/, '').toUpperCase();
+  const base = symbol
+    .replace(/USDT$|BUSD$|FDUSD$|USDC$|TUSD$|USD$/, '')
+    .toUpperCase();
   const s = size;
+
+  const [tier, setTier] = useState<number>(() => logoTierCache.get(base) ?? 0);
+
+  useEffect(() => {
+    setTier(logoTierCache.get(base) ?? 0);
+  }, [base]);
 
   if (base === 'BTC') {
     return (
@@ -196,9 +242,56 @@ export const CoinLogo: React.FC<CoinLogoProps> = ({
     );
   }
 
+  if (base === 'XAU') {
+    return (
+      <svg width={s} height={s} viewBox="0 0 24 24" className={`shrink-0 ${className}`}>
+        <circle cx="12" cy="12" r="12" fill="#D4A017" />
+        <path d="M9 10.5l1-2.5h4l1 2.5H9zm-3 5l1-2.5h4l1 2.5H6zm7 0l1-2.5h4l1 2.5h-6z" fill="#FFF7D6" />
+      </svg>
+    );
+  }
+
+  if (base === 'USDX') {
+    return (
+      <svg width={s} height={s} viewBox="0 0 24 24" className={`shrink-0 ${className}`}>
+        <circle cx="12" cy="12" r="12" fill="#089981" />
+        <path
+          d="M12.7 5.5v1.3c1.6.2 2.7 1 3 2.3l-1.6.5c-.2-.8-.9-1.3-1.9-1.3-1 0-1.7.4-1.7 1.1 0 .7.6 1 2 1.3 2.1.5 3.3 1.2 3.3 2.9 0 1.5-1.1 2.5-3.1 2.8v1.4h-1.4v-1.4c-1.7-.2-2.9-1.1-3.2-2.5l1.6-.5c.2.9 1 1.5 2.2 1.5 1.2 0 1.9-.5 1.9-1.2 0-.8-.6-1.1-2.2-1.5-1.9-.5-3-1.2-3-2.8 0-1.4 1.1-2.4 2.9-2.6V5.5h1.4z"
+          fill="#FFFFFF"
+        />
+      </svg>
+    );
+  }
+
+  const urls = getLogoUrls(base);
+  if (base && tier < urls.length) {
+    return (
+      <img
+        key={`${base}-${tier}`}
+        src={urls[tier]}
+        alt={base}
+        width={s}
+        height={s}
+        loading="lazy"
+        decoding="async"
+        style={{ width: s, height: s }}
+        className={`rounded-full object-cover shrink-0 select-none bg-[var(--bg-hover)] ${className}`}
+        onLoad={() => {
+          logoTierCache.set(base, tier);
+        }}
+        onError={() => {
+          const next = tier + 1;
+          logoTierCache.set(base, next);
+          setTier(next);
+        }}
+      />
+    );
+  }
+
+  const bg = getDeterministicColor(base || symbol, color);
   return (
     <span
-      style={{ width: s, height: s, backgroundColor: color, fontSize: Math.max(8, Math.round(s * 0.5)) }}
+      style={{ width: s, height: s, backgroundColor: bg, fontSize: Math.max(8, Math.round(s * 0.48)) }}
       className={`rounded-full text-white font-extrabold inline-flex items-center justify-center shrink-0 select-none ${className}`}
     >
       {letter || base[0] || 'C'}
