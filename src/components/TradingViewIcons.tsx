@@ -165,71 +165,115 @@ export const WatchlistBookmarkIcon: React.FC<IconProps> = ({ className = 'w-[20p
 );
 
 /** Left Toolbar |✦| Sparkle / Pattern Tool Icon */
-export const SparkleBarsIcon: React.FC<IconProps> = ({ className = 'w-[19px] h-[19px]' }) => (
+export const SparkleBarsIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[20px]' }) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.35"
+    strokeWidth="1.3"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
   >
-    <line x1="5" y1="5" x2="5" y2="19" />
-    <line x1="19" y1="5" x2="19" y2="19" />
-    <path d="M12 7.5L13.4 10.6L16.5 12L13.4 13.4L12 16.5L10.6 13.4L7.5 12L10.6 10.6L12 7.5Z" />
+    <line x1="4.5" y1="5" x2="4.5" y2="19" />
+    <line x1="19.5" y1="5" x2="19.5" y2="19" />
+    <path d="M12 7.5C12.35 10.1 13.9 11.65 16.5 12C13.9 12.35 12.35 13.9 12 16.5C11.65 13.9 10.1 12.35 7.5 12C10.1 11.65 11.65 10.1 12 7.5Z" />
   </svg>
 );
 
-/** Left Toolbar Stay in Drawing Mode (Pencil + Mini Padlock) */
-export const StayInDrawingIcon: React.FC<IconProps> = ({ className = 'w-[19px] h-[19px]' }) => (
+/** Left Toolbar Exact TradingView Downward Horseshoe Magnet (arch on top, capped legs at bottom) */
+export const MagnetTvIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[20px]' }) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.35"
+    strokeWidth="1.3"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
   >
-    <path d="M13.5 5.5l3 3-8 8H5.5v-3l8-8z" />
-    <rect x="13.5" y="14.5" width="6" height="5" rx="1" />
-    <path d="M15 14.5v-1.2a1.5 1.5 0 0 1 3 0v1.2" />
+    <path d="M6.5 19V11.5a5.5 5.5 0 0 1 11 0V19h-3.3v-7.5a2.2 2.2 0 0 0-4.4 0V19H6.5z" />
+    <line x1="6.5" y1="15.8" x2="9.8" y2="15.8" />
+    <line x1="14.2" y1="15.8" x2="17.5" y2="15.8" />
   </svg>
 );
 
-/** Left Toolbar Hide Drawings (Eye + Mini Brush) */
-export const EyeBrushIcon: React.FC<IconProps> = ({ className = 'w-[19px] h-[19px]' }) => (
+/** Left Toolbar Stay in Drawing Mode (Diagonal Pencil + Tiny Closed Padlock) */
+export const StayInDrawingIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[20px]' }) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.35"
+    strokeWidth="1.3"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
   >
-    <path d="M3 10.5C5.2 6.8 8.3 5.2 11.5 5.2s6.3 1.6 8.5 5.3c-2.2 3.7-5.3 5.3-8.5 5.3S5.2 14.2 3 10.5z" />
-    <circle cx="11.5" cy="10.5" r="2.2" />
-    <path d="M14.5 19.5c1.5 0 2.5-.8 3-2l2.5-2.5" />
-    <path d="M14 19.5c.3-1.4 1.3-2.2 2.6-2.2" />
+    <path d="M14.2 4.6l2.6 2.6-8.4 8.4-3.2.6.6-3.2 8.4-8.4z" />
+    <line x1="12.2" y1="6.6" x2="14.8" y2="9.2" />
+    <rect x="13.5" y="14.2" width="6.2" height="5.3" rx="1.1" />
+    <path d="M15 14.2v-1.4a1.6 1.6 0 0 1 3.2 0v1.4" />
+    <line x1="16.6" y1="16.3" x2="16.6" y2="17.5" />
   </svg>
 );
 
-/** Left Toolbar Minimal Trash Icon */
-export const TrashMinimalIcon: React.FC<IconProps> = ({ className = 'w-[19px] h-[19px]' }) => (
+/** Left Toolbar Open/Closed Padlock (Exact TradingView proportions & keyhole) */
+export const PadlockTvIcon: React.FC<IconProps & { locked?: boolean }> = ({
+  className = 'w-[20px] h-[20px]',
+  locked = false,
+}) => (
   <svg
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.35"
+    strokeWidth="1.3"
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
   >
-    <path d="M5 7h14" />
-    <path d="M9.5 7V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v2" />
-    <path d="M7 7l1 12.5a1 1 0 0 0 1 .9h6a1 1 0 0 0 1-.9L17 7" />
+    <rect x="6.5" y="11" width="11" height="8.5" rx="2" />
+    {locked ? (
+      <path d="M9 11V8.5a3 3 0 0 1 6 0V11" />
+    ) : (
+      <path d="M9 11V7.8a3.1 3.1 0 0 1 5.6-1.8" />
+    )}
+    <circle cx="12" cy="15" r="0.7" fill="currentColor" />
+    <line x1="12" y1="15.3" x2="12" y2="16.8" />
+  </svg>
+);
+
+/** Left Toolbar Hide Drawings (Eye + Mini Paintbrush) */
+export const EyeBrushIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[20px]' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M3.2 10.5C5.2 7.2 8.2 5.6 11.4 5.6s6.2 1.6 8.2 4.9c-2 3.3-5 4.9-8.2 4.9s-6.2-1.6-8.2-4.9z" />
+    <circle cx="11.4" cy="10.5" r="2.35" />
+    <path d="M13.5 19.8c1.7.1 3-.6 3.5-1.8.4-.9-.4-1.7-1.3-1.4-1 .3-1.2 1.3-2.2 3.2z" />
+    <path d="M17.2 16.7l2.6-2.4" />
+  </svg>
+);
+
+/** Left Toolbar Minimal Trash Icon (Clean tapered bin + flat lid + handle, no inner lines) */
+export const TrashMinimalIcon: React.FC<IconProps> = ({ className = 'w-[20px] h-[20px]' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.3"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M5.5 7.2h13" />
+    <path d="M9.6 7.2V5.4a1 1 0 0 1 1-1h2.8a1 1 0 0 1 1 1v1.8" />
+    <path d="M7.3 7.2l1 11.6a1.1 1.1 0 0 0 1.1 1h5.2a1.1 1.1 0 0 0 1.1-1l1-11.6" />
   </svg>
 );
 

@@ -2,9 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   ChevronRight,
   Star,
-  Magnet,
-  Lock,
-  Unlock,
   EyeOff,
   ZoomOut,
 } from 'lucide-react';
@@ -18,6 +15,8 @@ import {
 } from '../utils/drawingToolsCatalog';
 import {
   EyeBrushIcon,
+  MagnetTvIcon,
+  PadlockTvIcon,
   SparkleBarsIcon,
   StayInDrawingIcon,
   TrashMinimalIcon,
@@ -122,16 +121,17 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   return (
     <aside
       ref={railRef}
-      className="relative w-[50px] bg-[var(--bg-surface)] rounded-tr-[6px] flex flex-col items-center py-2 gap-1 shrink-0 select-none z-30"
+      className="relative w-[52px] bg-[var(--bg-surface)] rounded-tr-[6px] flex flex-col items-center py-2 shrink-0 select-none z-30"
     >
-      {/* Category Tool Slots with Flyout Chevron */}
-      <div className="flex flex-col items-center gap-0.5 w-full overflow-y-auto overflow-x-hidden pb-2">
+      {/* Category Tool Slots (Exact 16-icon TradingView Left Toolbox Order) */}
+      <div className="flex flex-col items-center gap-[3px] w-full overflow-y-auto overflow-x-hidden pb-2">
         {TOOL_GROUPS.map((group) => {
           const currentId = groupActiveTool[group.id] || group.defaultTool;
           const toolDef = ALL_TOOLS_MAP[currentId];
           const isGroupActive = group.tools.some((t) => t.id === activeTool);
           const isCursorGroup = group.id === 'cursors';
           const isMenuOpen = openMenuId === group.id;
+          const hasFlyout = group.tools.length > 1;
 
           return (
             <div key={group.id} className="relative group/slot flex items-center justify-center w-full">
@@ -147,42 +147,43 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                     : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
-                {toolDef.renderIcon('w-[19px] h-[19px]')}
+                {toolDef.renderIcon('w-[21px] h-[21px]')}
               </button>
 
-              {/* Right-edge flyout chevron trigger */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openFlyout(group.id, e.currentTarget.parentElement);
-                }}
-                title={`${group.title} menu`}
-                className={`absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-7 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
-                  isMenuOpen
-                    ? 'opacity-100 bg-[var(--bg-hover)] text-[var(--text-main)]'
-                    : 'opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)]'
-                }`}
-              >
-                <ChevronRight className="w-3 h-3" />
-              </button>
+              {hasFlyout && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openFlyout(group.id, e.currentTarget.parentElement);
+                  }}
+                  title={`${group.title} menu`}
+                  className={`absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-7 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
+                    isMenuOpen
+                      ? 'opacity-100 bg-[var(--bg-hover)] text-[var(--text-main)]'
+                      : 'opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)]'
+                  }`}
+                >
+                  <ChevronRight className="w-3 h-3" />
+                </button>
+              )}
             </div>
           );
         })}
 
         <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
 
-        {/* Sparkle / Pattern & Indicator Quick Trigger (|✦| from Screenshot 7) */}
+        {/* 9. Sparkle / Pattern & Indicator Quick Trigger (|✦|) */}
         <button
           type="button"
           onClick={() => onOpenIndicators?.()}
           title="Indicators & Chart Patterns"
           className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
         >
-          <SparkleBarsIcon className="w-[19px] h-[19px]" />
+          <SparkleBarsIcon className="w-[21px] h-[21px]" />
         </button>
 
-        {/* Measure Tool */}
+        {/* 10. Measure Tool (Diagonal Ruler) */}
         <button
           type="button"
           onClick={() => onSelectTool('measure')}
@@ -193,10 +194,10 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          {MEASURE_TOOL.renderIcon('w-[19px] h-[19px]')}
+          {MEASURE_TOOL.renderIcon('w-[21px] h-[21px]')}
         </button>
 
-        {/* Zoom In Box Tool + Zoom Out */}
+        {/* 11. Zoom In Box Tool + Zoom Out */}
         <div className="relative group/slot flex items-center justify-center w-full">
           <button
             type="button"
@@ -208,7 +209,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            {ZOOM_TOOL.renderIcon('w-[19px] h-[19px]')}
+            {ZOOM_TOOL.renderIcon('w-[21px] h-[21px]')}
           </button>
           <button
             type="button"
@@ -225,7 +226,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
 
         <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
 
-        {/* Magnet Mode */}
+        {/* 12. Magnet Mode (Exact Downward Horseshoe Magnet ∩) */}
         <div className="relative group/slot flex items-center justify-center w-full">
           <button
             type="button"
@@ -243,7 +244,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <Magnet className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <MagnetTvIcon className="w-[21px] h-[21px]" />
           </button>
           <button
             type="button"
@@ -262,7 +263,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           </button>
         </div>
 
-        {/* Stay in Drawing Mode (Pencil + Padlock Icon from Screenshot 7) */}
+        {/* 13. Stay in Drawing Mode (Pencil + Tiny Padlock) */}
         <button
           type="button"
           onClick={onToggleStayInDrawingMode}
@@ -277,10 +278,10 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          <StayInDrawingIcon className="w-[19px] h-[19px]" />
+          <StayInDrawingIcon className="w-[21px] h-[21px]" />
         </button>
 
-        {/* Lock All Drawings */}
+        {/* 14. Lock All Drawings (Open/Closed TradingView Padlock) */}
         <button
           type="button"
           onClick={onToggleLockDrawings}
@@ -295,14 +296,10 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          {lockDrawings ? (
-            <Lock className="w-[17px] h-[17px]" strokeWidth={1.45} />
-          ) : (
-            <Unlock className="w-[17px] h-[17px]" strokeWidth={1.45} />
-          )}
+          <PadlockTvIcon className="w-[21px] h-[21px]" locked={lockDrawings} />
         </button>
 
-        {/* Hide All Drawings (Eye + Mini Brush Icon from Screenshot 7) */}
+        {/* 15. Hide All Drawings (Eye + Mini Paintbrush) */}
         <button
           type="button"
           onClick={onToggleHideDrawings}
@@ -314,31 +311,31 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           }`}
         >
           {drawingsHidden ? (
-            <EyeOff className="w-[17px] h-[17px]" strokeWidth={1.45} />
+            <EyeOff className="w-[18px] h-[18px]" strokeWidth={1.35} />
           ) : (
-            <EyeBrushIcon className="w-[19px] h-[19px]" />
+            <EyeBrushIcon className="w-[21px] h-[21px]" />
           )}
         </button>
 
         <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
 
-        {/* Remove Drawings (Minimal Trash Icon from Screenshot 7) */}
+        {/* 16. Remove Drawings (Minimal Trash Can) */}
         <div className="relative group/slot flex items-center justify-center w-full">
           <button
             type="button"
             onClick={() => {
+              if (drawingsCount === 0) return;
               if (selectedDrawingId) onDeleteSelectedDrawing();
               else onClearDrawings();
             }}
-            disabled={drawingsCount === 0}
             title={
               selectedDrawingId
                 ? 'Delete Selected Drawing (Del)'
                 : `Remove All Drawings (${drawingsCount})`
             }
-            className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer"
+            className="w-[36px] h-[36px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] transition-colors cursor-pointer"
           >
-            <TrashMinimalIcon className="w-[19px] h-[19px]" />
+            <TrashMinimalIcon className="w-[21px] h-[21px]" />
           </button>
           {drawingsCount > 0 && (
             <button
