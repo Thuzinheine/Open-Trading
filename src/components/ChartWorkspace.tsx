@@ -403,11 +403,16 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     >([]);
     const scaleBadgesSigRef = useRef('');
     const [showScrollToRecent, setShowScrollToRecent] = useState(false);
-    const [rightScaleWidth, setRightScaleWidth] = useState(66);
-    const [crosshairPlus, setCrosshairPlus] = useState<{ y: number; price: number } | null>(null);
-    const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+    const [rightScaleWidth, setRightScaleWidth] = useState(70);
+    const hoverBarTimeRef = useRef<number | null>(null);
+    const crosshairLiveRef = useRef<{ y: number; price: number } | null>(null);
+    const crosshairTagElRef = useRef<HTMLDivElement>(null);
+    const crosshairPriceTextElRef = useRef<HTMLSpanElement>(null);
+    const crosshairPlusBtnElRef = useRef<HTMLButtonElement>(null);
+    const isHoveringPlusBtnRef = useRef(false);
+    const [plusMenuAnchor, setPlusMenuAnchor] = useState<{ y: number; price: number } | null>(null);
     const plusMenuOpenRef = useRef(false);
-    plusMenuOpenRef.current = plusMenuOpen;
+    plusMenuOpenRef.current = plusMenuAnchor !== null;
     const plusMenuRef = useRef<HTMLDivElement>(null);
 
     // Slice candles when in Replay mode
@@ -634,7 +639,19 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+      const chart = chartRef.current;
+      const placement = chartSettingsRef.current.scales.scalesPlacement;
+      const scaleW = chart ? chart.priceScale(placement).width() : 70;
+      const plotLeft = placement === 'left' ? scaleW : 0;
+      const plotWidth = Math.max(0, canvas.width - scaleW);
+      const plotHeight = Math.max(0, canvas.height - 26);
+
       if (!drawingsHiddenRef.current) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(plotLeft, 0, plotWidth, plotHeight);
+        ctx.clip();
+
         const visibleDrawings = drawingsRef.current.filter((d) =>
           isDrawingVisibleOnTimeframe(d, intervalRef.current)
         );
@@ -650,6 +667,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         if (tempShapeRef.current) {
           renderDrawingObject(ctx, tempShapeRef.current, bridge, true, false);
         }
+        ctx.restore();
       }
 
       if (zoomBoxRef.current) {
@@ -797,7 +815,38 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         }
       }
 
-      // 3. Guaranteed Zero-Overlap Bidirectional Stacking Solver
+      // 2b. Horizontal Line & Horizontal Ray price badges on the Price Scale (matches TradingView!)
+      if (!drawingsHiddenRef.current) {
+        const activeDrawings = drawingsRef.current.filter((d) =>
+          isDrawingVisibleOnTimeframe(d, intervalRef.current)
+        );
+        for (const d of activeDrawings) {
+          if (d.showPriceLabels === false) continue;
+          let linePrice: number | undefined;
+          if (d.type === 'hline' && d.price !== undefined) {
+            linePrice = d.price;
+          } else if (d.type === 'hray' && d.p1) {
+            linePrice = d.p1.price;
+          }
+          if (linePrice === undefined || !Number.isFinite(linePrice)) continue;
+          const y = series.priceToCoordinate(linePrice);
+          if (y === null || !Number.isFinite(Number(y))) continue;
+          const iy = Number(y);
+          if (iy < -24 || iy > maxBottom + 24) continue;
+          indRaw.push({
+            id: `drawing_${d.id}`,
+            kind: 'indicator',
+            text: fmtPrice(linePrice, prec),
+            bgColor: d.color || '#2962ff',
+            idealY: iy,
+            top: Math.max(2, Math.min(maxBottom - pillH, Math.round(iy - halfPill))),
+            height: pillH,
+          });
+        }
+      }
+
+      // 3. Guaranteed Zero-Overlap Bidirectional Stacking Solver (with crisp 1px seam when stacked)
+      const badgeGap = 1;
       const resolved: RawBadge[] = [];
       if (sc.noOverlappingLabels) {
         let ordered: RawBadge[];
@@ -809,19 +858,19 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             .filter((b) => b.idealY >= priceBadge!.idealY)
             .sort((a, b) => a.idealY - b.idealY);
 
-          // Stack indicators above Current Price upward from priceBadge.top
+          // Stack indicators/drawings above Current Price upward from priceBadge.top
           let upCursor = priceBadge.top;
           for (const item of above) {
-            item.top = Math.min(Math.round(item.idealY - halfPill), upCursor - item.height);
+            item.top = Math.min(Math.round(item.idealY - halfPill), upCursor - item.height - badgeGap);
             upCursor = item.top;
           }
           above.reverse();
 
-          // Stack indicators below Current Price downward from bottom of Price+Countdown box
-          let downCursor = priceBadge.top + priceBadge.height;
+          // Stack indicators/drawings below Current Price downward from bottom of Price+Countdown box
+          let downCursor = priceBadge.top + priceBadge.height + badgeGap;
           for (const item of below) {
             item.top = Math.max(Math.round(item.idealY - halfPill), downCursor);
-            downCursor = item.top + item.height;
+            downCursor = item.top + item.height + badgeGap;
           }
 
           ordered = [...above, priceBadge, ...below];
@@ -830,13 +879,13 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           let cursor = 2;
           for (const item of ordered) {
             item.top = Math.max(Math.round(item.idealY - halfPill), cursor);
-            cursor = item.top + item.height;
+            cursor = item.top + item.height + badgeGap;
           }
         }
 
         // Bottom boundary pass: cascade upward so nothing clips past time axis OR overlaps
         for (let i = ordered.length - 1; i >= 0; i--) {
-          const limit = i === ordered.length - 1 ? maxBottom : ordered[i + 1].top;
+          const limit = i === ordered.length - 1 ? maxBottom : ordered[i + 1].top - badgeGap;
           if (ordered[i].top + ordered[i].height > limit) {
             ordered[i].top = limit - ordered[i].height;
           }
@@ -844,7 +893,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
 
         // Top boundary pass: cascade downward so nothing clips above top edge OR overlaps
         for (let i = 0; i < ordered.length; i++) {
-          const minTop = i === 0 ? 2 : ordered[i - 1].top + ordered[i - 1].height;
+          const minTop = i === 0 ? 2 : ordered[i - 1].top + ordered[i - 1].height + badgeGap;
           if (ordered[i].top < minTop) {
             ordered[i].top = minTop;
           }
@@ -893,12 +942,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         crosshair: {
           mode: CrosshairMode.Normal,
           vertLine: { color: '#9598a1', style: LineStyle.Dashed },
-          horzLine: { color: '#9598a1', style: LineStyle.Dashed },
+          horzLine: { color: '#9598a1', style: LineStyle.Dashed, labelVisible: false },
         },
         rightPriceScale: {
           borderColor: isDarkMode ? '#2a2e39' : '#e0e3eb',
           autoScale: true,
-          minimumWidth: 66,
+          minimumWidth: 70,
           scaleMargins: { top: 0.08, bottom: 0.22 },
         },
         timeScale: {
@@ -1018,24 +1067,67 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       bbMidSeriesRef.current = bbMidSeries;
       bbLowerSeriesRef.current = bbLowerSeries;
 
+      const hideCrosshairDom = () => {
+        crosshairLiveRef.current = null;
+        if (crosshairTagElRef.current) crosshairTagElRef.current.style.visibility = 'hidden';
+        if (crosshairPlusBtnElRef.current) crosshairPlusBtnElRef.current.style.visibility = 'hidden';
+      };
+
       chart.subscribeCrosshairMove((param) => {
-        if (!param.point || param.point.y < 0) {
-          if (!plusMenuOpenRef.current) setCrosshairPlus(null);
-        } else {
-          const p = candleSeries.coordinateToPrice(param.point.y);
-          if (p !== null && Number.isFinite(Number(p)) && !plusMenuOpenRef.current) {
-            setCrosshairPlus({ y: param.point.y, price: Number(p) });
-            const rw = chart.priceScale('right').width();
-            if (rw > 0) setRightScaleWidth(rw);
+        if (!plusMenuOpenRef.current) {
+          if (!param.point || param.point.y < 10 || activeToolRef.current === 'arrow') {
+            if (!isHoveringPlusBtnRef.current) hideCrosshairDom();
+          } else {
+            const p = candleSeries.coordinateToPrice(param.point.y);
+            if (p !== null && Number.isFinite(Number(p))) {
+              const priceNum = Number(p);
+              const yPos = Math.round(param.point.y - 9.5);
+              crosshairLiveRef.current = { y: param.point.y, price: priceNum };
+
+              const arr = displayCandlesRef.current;
+              const symCfg = chartSettingsRef.current.symbol;
+              const refClose = arr.length ? arr[arr.length - 1].close : priceNum;
+              const prec =
+                symCfg.precision === 'default'
+                  ? getPrecision(refClose)
+                  : parseInt(symCfg.precision, 10);
+
+              const tagEl = crosshairTagElRef.current;
+              const txtEl = crosshairPriceTextElRef.current;
+              if (tagEl && txtEl) {
+                txtEl.textContent = fmtPrice(priceNum, prec);
+                tagEl.style.transform = `translate3d(0, ${yPos}px, 0)`;
+                tagEl.style.visibility = 'visible';
+              }
+
+              const plusBtnEl = crosshairPlusBtnElRef.current;
+              if (plusBtnEl) {
+                if (chartSettingsRef.current.scales.plusButton && param.point.y > 14) {
+                  plusBtnEl.style.transform = `translate3d(0, ${yPos}px, 0)`;
+                  plusBtnEl.style.visibility = 'visible';
+                } else {
+                  plusBtnEl.style.visibility = 'hidden';
+                }
+              }
+            } else {
+              hideCrosshairDom();
+            }
           }
         }
+
         if (!param.time) {
-          setHoverBar(null);
+          if (hoverBarTimeRef.current !== null) {
+            hoverBarTimeRef.current = null;
+            setHoverBar(null);
+          }
           return;
         }
         const t = Number(param.time);
-        const found = displayCandlesRef.current.find((c) => c.time === t);
-        if (found) setHoverBar(found);
+        if (hoverBarTimeRef.current !== t) {
+          hoverBarTimeRef.current = t;
+          const found = displayCandlesRef.current.find((c) => c.time === t);
+          if (found) setHoverBar(found);
+        }
       });
 
       chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
@@ -1140,17 +1232,19 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       const chart = chartRef.current;
       if (!chart) return;
       if (activeTool === 'arrow') {
+        if (crosshairTagElRef.current) crosshairTagElRef.current.style.visibility = 'hidden';
+        if (crosshairPlusBtnElRef.current) crosshairPlusBtnElRef.current.style.visibility = 'hidden';
         chart.applyOptions({
           crosshair: {
             vertLine: { visible: false },
-            horzLine: { visible: false },
+            horzLine: { visible: false, labelVisible: false },
           },
         });
       } else {
         chart.applyOptions({
           crosshair: {
             vertLine: { visible: true, color: '#9598a1', style: LineStyle.Dashed },
-            horzLine: { visible: true, color: '#9598a1', style: LineStyle.Dashed },
+            horzLine: { visible: true, color: '#9598a1', style: LineStyle.Dashed, labelVisible: false },
           },
         });
       }
@@ -1299,10 +1393,15 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         },
         crosshair:
           activeTool === 'arrow'
-            ? { vertLine: { visible: false }, horzLine: { visible: false } }
+            ? { vertLine: { visible: false }, horzLine: { visible: false, labelVisible: false } }
             : {
                 vertLine: { visible: true, color: cv.crosshairColor || '#9598a1', style: chStyle },
-                horzLine: { visible: true, color: cv.crosshairColor || '#9598a1', style: chStyle },
+                horzLine: {
+                  visible: true,
+                  color: cv.crosshairColor || '#9598a1',
+                  style: chStyle,
+                  labelVisible: false,
+                },
               },
         rightPriceScale: {
           visible: !isLeftScale,
@@ -1922,18 +2021,23 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         if (scaleMenuRef.current && !scaleMenuRef.current.contains(e.target as Node)) {
           setScaleMenuOpen(false);
         }
-        if (plusMenuRef.current && !plusMenuRef.current.contains(e.target as Node)) {
-          setPlusMenuOpen(false);
+        if (
+          plusMenuRef.current &&
+          !plusMenuRef.current.contains(e.target as Node) &&
+          !crosshairPlusBtnElRef.current?.contains(e.target as Node)
+        ) {
+          setPlusMenuAnchor(null);
         }
       };
       document.addEventListener('mousedown', onDown);
       return () => document.removeEventListener('mousedown', onDown);
     }, []);
 
-    // Redraw overlay whenever drawings/selection/visibility/timeframe change
+    // Redraw overlay & sync horizontal-line price scale badges whenever drawings/selection/visibility/timeframe change
     useEffect(() => {
       redrawOverlay();
-    }, [drawings, selectedDrawingId, drawingsHidden, interval, redrawOverlay]);
+      updateCountdownPos();
+    }, [drawings, selectedDrawingId, drawingsHidden, interval, redrawOverlay, updateCountdownPos]);
 
     // Reset floating toolbar popovers when selection changes
     useEffect(() => {
@@ -2621,7 +2725,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         redrawOverlay();
       }
       if (hoverCursor) setHoverCursor('');
-      if (!plusMenuOpenRef.current) setCrosshairPlus(null);
+      if (!plusMenuOpenRef.current) {
+        crosshairLiveRef.current = null;
+        if (crosshairTagElRef.current) crosshairTagElRef.current.style.visibility = 'hidden';
+        if (crosshairPlusBtnElRef.current) crosshairPlusBtnElRef.current.style.visibility = 'hidden';
+      }
     };
 
     const handleSubmitTextPrompt = (e: React.FormEvent) => {
@@ -3763,133 +3871,207 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             </div>
           ))}
 
-          {/* Top-Layer Sharp-Corner Crosshair Price Tag */}
-          {crosshairPlus && activeTool !== 'arrow' && crosshairPlus.y > 10 && (() => {
-            const lastBarClose = effectiveCandles[effectiveCandles.length - 1]?.close ?? crosshairPlus.price;
+          {/* Top-Layer GPU-Smooth Crosshair Price Tag (zero React re-render on mousemove!) */}
+          <div
+            ref={crosshairTagElRef}
+            className={`absolute top-0 ${
+              chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
+            } z-[15] pointer-events-none bg-[#131722] dark:bg-[#2a2e39] text-white select-none rounded-none flex items-center overflow-hidden will-change-transform`}
+            style={{
+              visibility: 'hidden',
+              height: '19px',
+              width: `${Math.max(64, rightScaleWidth - 1)}px`,
+              paddingLeft: '7px',
+              paddingRight: '3px',
+              fontSize: `${chartSettings.canvas.scaleFontSize || 11}px`,
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            <span
+              ref={crosshairPriceTextElRef}
+              className="font-semibold leading-none whitespace-nowrap tracking-[-0.01em]"
+            />
+          </div>
+
+          {/* Price-Scale Crosshair (+) Add Alert / Quick Action Button (exact TradingView Image 1 & 2) */}
+          <button
+            ref={crosshairPlusBtnElRef}
+            type="button"
+            data-ui-overlay="true"
+            onMouseEnter={() => {
+              isHoveringPlusBtnRef.current = true;
+            }}
+            onMouseLeave={() => {
+              isHoveringPlusBtnRef.current = false;
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (plusMenuAnchor) {
+                setPlusMenuAnchor(null);
+              } else if (crosshairLiveRef.current) {
+                setPlusMenuAnchor({ ...crosshairLiveRef.current });
+              }
+            }}
+            title="Add alert / quick actions"
+            style={{
+              visibility: 'hidden',
+              ...(chartSettings.scales.scalesPlacement === 'right'
+                ? { right: `${rightScaleWidth}px` }
+                : { left: `${rightScaleWidth}px` }),
+            }}
+            className="absolute top-0 z-20 w-[22px] h-[19px] rounded-none bg-[#131722] dark:bg-[#2a2e39] hover:bg-[#2962ff] text-white inline-flex items-center justify-center cursor-pointer transition-colors will-change-transform border-r border-white/90"
+          >
+            <PlusCircle className="w-3.5 h-3.5" strokeWidth={1.9} />
+          </button>
+
+          {/* TradingView (+) Quick Action Menu (Image 2) */}
+          {plusMenuAnchor && (() => {
+            const menuPrice = plusMenuAnchor.price;
+            const lastClose = effectiveCandles[effectiveCandles.length - 1]?.close ?? menuPrice;
             const prec =
               chartSettings.symbol.precision === 'default'
-                ? getPrecision(lastBarClose)
+                ? getPrecision(lastClose)
                 : parseInt(chartSettings.symbol.precision, 10);
+            const priceLabel = fmtPrice(menuPrice, prec);
+            const isAbovePrice = menuPrice >= lastClose;
+            const containerH = wrapperRef.current?.clientHeight || 520;
+            const menuTop = Math.max(8, Math.min(plusMenuAnchor.y - 10, containerH - 255));
+
             return (
               <div
-                className={`absolute ${
-                  chartSettings.scales.scalesPlacement === 'left' ? 'left-0' : 'right-0'
-                } z-[15] pointer-events-none bg-[#131722] dark:bg-[#2a2e39] text-white select-none rounded-none flex items-center overflow-hidden`}
+                ref={plusMenuRef}
+                data-ui-overlay="true"
                 style={{
-                  top: `${Math.round(crosshairPlus.y - 9.5)}px`,
-                  height: '19px',
-                  width: `${Math.max(64, rightScaleWidth - 1)}px`,
-                  paddingLeft: '7px',
-                  paddingRight: '3px',
-                  fontSize: `${chartSettings.canvas.scaleFontSize || 11}px`,
-                  fontFamily:
-                    '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
-                  fontVariantNumeric: 'tabular-nums',
+                  top: `${menuTop}px`,
+                  ...(chartSettings.scales.scalesPlacement === 'right'
+                    ? { right: `${rightScaleWidth + 24}px` }
+                    : { left: `${rightScaleWidth + 24}px` }),
                 }}
+                className="absolute z-30 w-[305px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-md shadow-2xl py-1.5 text-[13px] text-[var(--text-main)] select-none"
               >
-                <span className="font-semibold leading-none whitespace-nowrap tracking-[-0.01em]">
-                  {fmtPrice(crosshairPlus.price, prec)}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenAlertAtPrice?.(menuPrice);
+                    setPlusMenuAnchor(null);
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <BellPlus className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                    <span className="truncate">
+                      Add alert on {symbol} at {priceLabel}
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-[var(--text-muted)] shrink-0">Alt + A</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenAlertAtPrice?.(menuPrice);
+                    setPlusMenuAnchor(null);
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <BellPlus className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                    <span className="truncate">
+                      Add alert on EMA at {priceLabel}
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-[var(--text-muted)] shrink-0">Alt + A</span>
+                </button>
+
+                {onQuickLimitOrder && (
+                  <>
+                    <div className="h-px bg-[var(--border)] my-1.5" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onQuickLimitOrder(isAbovePrice ? 'SELL' : 'BUY', menuPrice);
+                        setPlusMenuAnchor(null);
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <ChevronDown className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.7} />
+                        <span className="truncate">
+                          {isAbovePrice ? 'Sell' : 'Buy'} 1 {symbol} @ {priceLabel} limit
+                        </span>
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)] shrink-0">
+                        {isAbovePrice ? 'Alt + Shift + S' : 'Alt + Shift + B'}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onQuickLimitOrder(isAbovePrice ? 'BUY' : 'SELL', menuPrice);
+                        setPlusMenuAnchor(null);
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <ChevronUp className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.7} />
+                        <span className="truncate">
+                          {isAbovePrice ? 'Buy' : 'Sell'} 1 {symbol} @ {priceLabel} stop
+                        </span>
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onQuickLimitOrder(isAbovePrice ? 'SELL' : 'BUY', menuPrice);
+                        setPlusMenuAnchor(null);
+                      }}
+                      className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                    >
+                      <span className="flex items-center gap-2.5 min-w-0">
+                        <LayoutGrid className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                        <span className="truncate">
+                          Add order on {symbol} at {priceLabel}...
+                        </span>
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)] shrink-0">Shift + T</span>
+                    </button>
+                  </>
+                )}
+
+                <div className="h-px bg-[var(--border)] my-1.5" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    onAddDrawing({
+                      id: `d-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                      type: 'hline',
+                      color: drawColor,
+                      price: menuPrice,
+                      lineWidth: 1.6,
+                      lineStyle: 'solid',
+                      visibility: DEFAULT_VISIBILITY,
+                    });
+                    setPlusMenuAnchor(null);
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 18 18" fill="none">
+                      <line x1="1" y1="9" x2="6.5" y2="9" stroke="currentColor" strokeWidth="1.4" />
+                      <circle cx="9" cy="9" r="2.2" stroke="currentColor" strokeWidth="1.4" />
+                      <line x1="11.5" y1="9" x2="17" y2="9" stroke="currentColor" strokeWidth="1.4" />
+                    </svg>
+                    <span className="truncate">Draw horizontal line at {priceLabel}</span>
+                  </span>
+                  <span className="text-[11px] text-[var(--text-muted)] shrink-0">Alt + H</span>
+                </button>
               </div>
             );
           })()}
-
-          {/* Price-Scale Crosshair (+) Quick Action Button */}
-          {chartSettings.scales.plusButton && crosshairPlus && activeTool !== 'arrow' && crosshairPlus.y > 14 && (
-            <div
-              ref={plusMenuRef}
-              data-ui-overlay="true"
-              style={{
-                top: `${Math.round(crosshairPlus.y - 9.5)}px`,
-                ...(chartSettings.scales.scalesPlacement === 'right'
-                  ? { right: `${rightScaleWidth}px` }
-                  : { left: `${rightScaleWidth}px` }),
-              }}
-              className="absolute z-20"
-            >
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setPlusMenuOpen((v) => !v);
-                }}
-                title={`Quick actions at ${fmtPrice(crosshairPlus.price)}`}
-                className="w-[22px] h-[19px] rounded-none bg-[#131722] dark:bg-[#2a2e39] hover:bg-[var(--accent)] text-white inline-flex items-center justify-center shadow-sm cursor-pointer transition-colors"
-              >
-                <PlusCircle className="w-3.5 h-3.5" strokeWidth={2} />
-              </button>
-
-              {plusMenuOpen && (
-                <div
-                  className={`absolute ${
-                    chartSettings.scales.scalesPlacement === 'right' ? 'right-7' : 'left-7'
-                  } top-0 w-[235px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 text-xs text-[var(--text-main)] z-30`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenAlertAtPrice?.(crosshairPlus.price);
-                      setPlusMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
-                  >
-                    <span>Add alert on {symbol}</span>
-                    <span className="font-mono-num text-[var(--text-muted)]">
-                      {fmtPrice(crosshairPlus.price)}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onAddDrawing({
-                        id: `d-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                        type: 'hline',
-                        color: drawColor,
-                        price: crosshairPlus.price,
-                        lineWidth: 2,
-                        lineStyle: 'solid',
-                        visibility: DEFAULT_VISIBILITY,
-                      });
-                      setPlusMenuOpen(false);
-                    }}
-                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
-                  >
-                    <span>Draw Horizontal Line</span>
-                    <span className="font-mono-num text-[var(--text-muted)]">
-                      {fmtPrice(crosshairPlus.price)}
-                    </span>
-                  </button>
-                  {onQuickLimitOrder && (
-                    <>
-                      <div className="h-px bg-[var(--border)] my-1" />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onQuickLimitOrder('BUY', crosshairPlus.price);
-                          setPlusMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 text-[#089981] font-medium cursor-pointer"
-                      >
-                        <span>Buy Limit {symbol}</span>
-                        <span className="font-mono-num">{fmtPrice(crosshairPlus.price)}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onQuickLimitOrder('SELL', crosshairPlus.price);
-                          setPlusMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 text-[#f23645] font-medium cursor-pointer"
-                      >
-                        <span>Sell Limit {symbol}</span>
-                        <span className="font-mono-num">{fmtPrice(crosshairPlus.price)}</span>
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Floating "Scroll to the most recent bar" button (TradingView style) */}
           {showScrollToRecent && effectiveCandles.length > 2 && (

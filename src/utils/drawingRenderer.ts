@@ -519,16 +519,6 @@ export function renderDrawingObject(
       ctx.lineTo(width, y);
       ctx.stroke();
       ctx.setLineDash([]);
-      if (s.showPriceLabels !== false) {
-        const lbl = fmtPrice(s.price);
-        ctx.font = '600 10px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(lbl).width + 12;
-        ctx.fillStyle = color;
-        ctx.fillRect(width - tw - 66, y - 9, tw, 18);
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(lbl, width - tw / 2 - 66, y + 3.5);
-      }
       drawBoxText(ctx, s, 16, width - 80, y, y);
       if (showHandles) drawHandleDot(ctx, width * 0.45, y, isSelected);
       break;
@@ -543,16 +533,6 @@ export function renderDrawingObject(
       ctx.lineTo(width, a.y);
       ctx.stroke();
       ctx.setLineDash([]);
-      if (s.showPriceLabels !== false) {
-        const lbl = fmtPrice(s.p1.price);
-        ctx.font = '600 10px "JetBrains Mono", monospace';
-        const tw = ctx.measureText(lbl).width + 12;
-        ctx.fillStyle = color;
-        ctx.fillRect(width - tw - 66, a.y - 9, tw, 18);
-        ctx.fillStyle = '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(lbl, width - tw / 2 - 66, a.y + 3.5);
-      }
       drawBoxText(ctx, s, a.x, width - 80, a.y, a.y);
       if (showHandles) drawHandleDot(ctx, a.x, a.y, isSelected);
       break;
