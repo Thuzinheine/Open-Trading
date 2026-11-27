@@ -1,0 +1,6 @@
+{
+  "name": "TradePulse — Live Binance Charting Terminal",
+  "description": "Real-time Binance crypto charting terminal with multi-indicator technical analysis, Fibonacci and drawing tools, bar replay, live order book, price alerts, and paper trading.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
