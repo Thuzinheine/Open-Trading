@@ -1888,7 +1888,7 @@ export default function App() {
   ].filter(Boolean).length;
 
   return (
-    <div className="h-screen w-screen overflow-hidden flex flex-col gap-[4px] bg-[var(--bg-gutter)] text-[var(--text-main)]">
+    <div className="h-screen w-screen overflow-hidden flex flex-col gap-[3px] bg-[var(--bg-gutter)] text-[var(--text-main)]">
       {/* Top Toolbar */}
       <TopBar
         currentSymbol={currentSymbol}
@@ -1929,8 +1929,8 @@ export default function App() {
         onToggleTheme={() => setIsDarkMode((d) => !d)}
       />
 
-      {/* Main Workspace Row (4px TradingView Gutters + Crisp Rounded Panels) */}
-      <div className="flex-1 flex gap-[4px] min-h-0">
+      {/* Main Workspace Row (Compact 3px TradingView Gutters + Crisp Panels) */}
+      <div className="flex-1 flex gap-[3px] min-h-0">
         {/* Left Drawing Toolbox (TradingView Style with Flyout Menus) */}
         <LeftToolbar
           activeTool={activeTool}
@@ -1975,7 +1975,7 @@ export default function App() {
         />
 
         {/* Center Chart + Bottom Paper Trade Drawer */}
-        <main className="flex-1 flex flex-col min-w-0 min-h-0 rounded-[6px] overflow-hidden bg-[var(--bg-app)]">
+        <main className="flex-1 flex flex-col min-w-0 min-h-0 rounded-[4px] overflow-hidden bg-[var(--bg-app)]">
           <ChartWorkspace
             ref={chartWorkspaceRef}
             symbol={chartDataMeta.sym}

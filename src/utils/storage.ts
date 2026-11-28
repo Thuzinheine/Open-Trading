@@ -119,8 +119,8 @@ export const DEFAULT_PAPER_ACCOUNT: PaperAccountState = {
 };
 
 export const DEFAULT_ZOOM: SavedZoomState = {
-  visibleBars: 110,
-  rightOffset: 10,
+  visibleBars: 150,
+  rightOffset: 8,
 };
 
 export function isVisibilityActiveOnTimeframe(
@@ -532,9 +532,9 @@ export const DEFAULT_CHART_SETTINGS: ChartSettings = {
     scaleTextColor: '',
     scaleFontSize: 11,
     scaleLineColor: '',
-    marginTop: 8,
-    marginBottom: 20,
-    marginRightBars: 10,
+    marginTop: 6,
+    marginBottom: 7,
+    marginRightBars: 8,
   },
   trading: {
     buySellButtons: false,
@@ -586,6 +586,15 @@ export function loadChartSettings(): ChartSettings {
     if (merged.canvas.scaleFontSize === 12 && !localStorage.getItem('tp_scale_font_v2')) {
       merged.canvas.scaleFontSize = 11;
       localStorage.setItem('tp_scale_font_v2', '1');
+    }
+    if (
+      merged.canvas.marginTop === 8 &&
+      merged.canvas.marginBottom === 20 &&
+      !localStorage.getItem('tp_chart_margins_tv_v1')
+    ) {
+      merged.canvas.marginTop = 6;
+      merged.canvas.marginBottom = 7;
+      localStorage.setItem('tp_chart_margins_tv_v1', '1');
     }
   } catch {}
   return merged;

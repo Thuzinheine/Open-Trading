@@ -121,10 +121,10 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
   return (
     <aside
       ref={railRef}
-      className="relative w-[52px] bg-[var(--bg-surface)] rounded-tr-[6px] flex flex-col items-center py-2 shrink-0 select-none z-30"
+      className="relative w-[44px] bg-[var(--bg-surface)] rounded-tr-[4px] flex flex-col items-center py-1.5 shrink-0 select-none z-30"
     >
-      {/* Category Tool Slots (Exact 16-icon TradingView Left Toolbox Order) */}
-      <div className="flex flex-col items-center gap-[3px] w-full overflow-y-auto overflow-x-hidden pb-2">
+      {/* Category Tool Slots (Exact Compact 16-icon TradingView Left Toolbox) */}
+      <div className="flex flex-col items-center gap-[1px] w-full overflow-y-auto overflow-x-hidden pb-1.5">
         {TOOL_GROUPS.map((group) => {
           const currentId = groupActiveTool[group.id] || group.defaultTool;
           const toolDef = ALL_TOOLS_MAP[currentId];
@@ -139,7 +139,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 type="button"
                 onClick={() => onSelectTool(currentId)}
                 title={`${toolDef.label}${toolDef.shortcut ? ` (${toolDef.shortcut})` : ''}`}
-                className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+                className={`w-[32px] h-[32px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
                   isGroupActive
                     ? isCursorGroup
                       ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
@@ -147,7 +147,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                     : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
-                {toolDef.renderIcon('w-[27px] h-[27px]')}
+                {toolDef.renderIcon('w-[21px] h-[21px]')}
               </button>
 
               {hasFlyout && (
@@ -158,29 +158,29 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                     openFlyout(group.id, e.currentTarget.parentElement);
                   }}
                   title={`${group.title} menu`}
-                  className={`absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-7 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
+                  className={`absolute right-0 top-1/2 -translate-y-1/2 w-[11px] h-6 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
                     isMenuOpen
                       ? 'opacity-100 bg-[var(--bg-hover)] text-[var(--text-main)]'
                       : 'opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)]'
                   }`}
                 >
-                  <ChevronRight className="w-3 h-3" />
+                  <ChevronRight className="w-2.5 h-2.5" />
                 </button>
               )}
             </div>
           );
         })}
 
-        <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
+        <div className="w-5 h-px bg-[var(--border)] my-1 shrink-0" />
 
         {/* 9. Sparkle / Pattern & Indicator Quick Trigger (|✦|) */}
         <button
           type="button"
           onClick={() => onOpenIndicators?.()}
           title="Indicators & Chart Patterns"
-          className="w-[38px] h-[38px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+          className="w-[32px] h-[32px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
         >
-          <SparkleBarsIcon className="w-[27px] h-[27px]" />
+          <SparkleBarsIcon className="w-[21px] h-[21px]" />
         </button>
 
         {/* 10. Measure Tool (Diagonal Ruler) */}
@@ -188,13 +188,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           type="button"
           onClick={() => onSelectTool('measure')}
           title="Measure Price & Bars (Drag)"
-          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[32px] h-[32px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
             activeTool === 'measure'
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          {MEASURE_TOOL.renderIcon('w-[27px] h-[27px]')}
+          {MEASURE_TOOL.renderIcon('w-[21px] h-[21px]')}
         </button>
 
         {/* 11. Zoom In Box Tool + Zoom Out */}
@@ -203,13 +203,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
             type="button"
             onClick={() => onSelectTool('zoom_in')}
             title="Zoom In (Drag Box on Chart)"
-            className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[32px] h-[32px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
               activeTool === 'zoom_in'
                 ? 'bg-[var(--bg-active)] text-[var(--accent)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            {ZOOM_TOOL.renderIcon('w-[27px] h-[27px]')}
+            {ZOOM_TOOL.renderIcon('w-[21px] h-[21px]')}
           </button>
           <button
             type="button"
@@ -218,13 +218,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               onZoomOut();
             }}
             title="Zoom Out"
-            className="absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-7 rounded-r flex items-center justify-center opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer"
+            className="absolute right-0 top-1/2 -translate-y-1/2 w-[11px] h-6 rounded-r flex items-center justify-center opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer"
           >
-            <ZoomOut className="w-3 h-3" />
+            <ZoomOut className="w-2.5 h-2.5" />
           </button>
         </div>
 
-        <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
+        <div className="w-5 h-px bg-[var(--border)] my-1 shrink-0" />
 
         {/* 12. Magnet Mode (Exact Downward Horseshoe Magnet ∩) */}
         <div className="relative group/slot flex items-center justify-center w-full">
@@ -238,13 +238,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 ? 'Weak Magnet: ON (Snaps near candle OHLC)'
                 : 'Strong Magnet: ON (Always snaps to candle OHLC)'
             }
-            className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[32px] h-[32px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
               magnetMode !== 'off'
                 ? 'bg-[#131722] dark:bg-[var(--accent)] text-white'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <MagnetTvIcon className="w-[27px] h-[27px]" />
+            <MagnetTvIcon className="w-[21px] h-[21px]" />
           </button>
           <button
             type="button"
@@ -253,13 +253,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               openFlyout('magnet', e.currentTarget.parentElement);
             }}
             title="Magnet Mode Options"
-            className={`absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-7 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
+            className={`absolute right-0 top-1/2 -translate-y-1/2 w-[11px] h-6 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
               openMenuId === 'magnet'
                 ? 'opacity-100 bg-[var(--bg-hover)] text-[var(--accent)]'
                 : 'opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)]'
             }`}
           >
-            <ChevronRight className="w-3 h-3" />
+            <ChevronRight className="w-2.5 h-2.5" />
           </button>
         </div>
 
@@ -272,13 +272,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               ? 'Stay in Drawing Mode: ON (Keep tool active after drawing)'
               : 'Stay in Drawing Mode: OFF (Return to cursor after drawing)'
           }
-          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[32px] h-[32px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
             stayInDrawingMode
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          <StayInDrawingIcon className="w-[27px] h-[27px]" />
+          <StayInDrawingIcon className="w-[21px] h-[21px]" />
         </button>
 
         {/* 14. Lock All Drawings (Open/Closed TradingView Padlock) */}
@@ -290,13 +290,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
               ? 'All Drawings Locked (Click to unlock dragging/editing)'
               : 'Lock All Drawing Tools'
           }
-          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[32px] h-[32px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
             lockDrawings
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          <PadlockTvIcon className="w-[27px] h-[27px]" locked={lockDrawings} />
+          <PadlockTvIcon className="w-[21px] h-[21px]" locked={lockDrawings} />
         </button>
 
         {/* 15. Hide All Drawings (Eye + Mini Paintbrush) */}
@@ -304,20 +304,20 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
           type="button"
           onClick={onToggleHideDrawings}
           title={drawingsHidden ? 'Show All Drawings' : 'Hide All Drawings'}
-          className={`w-[38px] h-[38px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+          className={`w-[32px] h-[32px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
             drawingsHidden
               ? 'bg-[var(--bg-active)] text-[var(--accent)]'
               : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
           }`}
         >
           {drawingsHidden ? (
-            <EyeOff className="w-[22px] h-[22px]" strokeWidth={1.3} />
+            <EyeOff className="w-[18px] h-[18px]" strokeWidth={1.3} />
           ) : (
-            <EyeBrushIcon className="w-[27px] h-[27px]" />
+            <EyeBrushIcon className="w-[21px] h-[21px]" />
           )}
         </button>
 
-        <div className="w-7 h-px bg-[var(--border)] my-1.5 shrink-0" />
+        <div className="w-5 h-px bg-[var(--border)] my-1 shrink-0" />
 
         {/* 16. Remove Drawings (Minimal Trash Can) */}
         <div className="relative group/slot flex items-center justify-center w-full">
@@ -333,9 +333,9 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 ? 'Delete Selected Drawing (Del)'
                 : `Remove All Drawings (${drawingsCount})`
             }
-            className="w-[38px] h-[38px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] transition-colors cursor-pointer"
+            className="w-[32px] h-[32px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] hover:text-[var(--down)] transition-colors cursor-pointer"
           >
-            <TrashMinimalIcon className="w-[27px] h-[27px]" />
+            <TrashMinimalIcon className="w-[21px] h-[21px]" />
           </button>
           {drawingsCount > 0 && (
             <button
@@ -345,13 +345,13 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                 openFlyout('trash', e.currentTarget.parentElement);
               }}
               title="Remove Options"
-              className={`absolute right-0.5 top-1/2 -translate-y-1/2 w-3 h-7 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
+              className={`absolute right-0 top-1/2 -translate-y-1/2 w-[11px] h-6 rounded-r flex items-center justify-center transition-opacity cursor-pointer ${
                 openMenuId === 'trash'
                   ? 'opacity-100 bg-[var(--bg-hover)] text-[var(--accent)]'
                   : 'opacity-0 group-hover/slot:opacity-100 hover:bg-[var(--bg-hover)] text-[var(--text-muted)]'
               }`}
             >
-              <ChevronRight className="w-3 h-3" />
+              <ChevronRight className="w-2.5 h-2.5" />
             </button>
           )}
         </div>
@@ -361,7 +361,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
       {openGroup && (
         <div
           style={{ top: `${menuTop}px` }}
-          className="fixed left-[54px] w-[248px] max-h-[calc(100vh-64px)] overflow-y-auto bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-2 z-50"
+          className="fixed left-[46px] w-[248px] max-h-[calc(100vh-64px)] overflow-y-auto bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-2 z-50"
         >
           {openGroup.tools.map((tool, idx) => {
             const prevSection = idx > 0 ? openGroup.tools[idx - 1].section : null;
@@ -427,7 +427,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
       {openMenuId === 'magnet' && (
         <div
           style={{ top: `${menuTop}px` }}
-          className="fixed left-[54px] w-[210px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-50"
+          className="fixed left-[46px] w-[210px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-50"
         >
           <div className="px-3 py-1 text-[10px] font-bold tracking-wider text-[var(--text-muted)]">
             MAGNET MODE
@@ -463,7 +463,7 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
       {openMenuId === 'trash' && (
         <div
           style={{ top: `${menuTop}px` }}
-          className="fixed left-[54px] w-[210px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-50 text-xs"
+          className="fixed left-[46px] w-[210px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-50 text-xs"
         >
           {selectedDrawingId && (
             <button

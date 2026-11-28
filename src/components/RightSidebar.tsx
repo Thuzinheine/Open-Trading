@@ -166,7 +166,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       const saved = Number(localStorage.getItem('tp_watchlist_ratio_v1'));
       if (Number.isFinite(saved) && saved >= 22 && saved <= 76) return saved;
     } catch {}
-    return 46;
+    return 52;
   });
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const detailsScrollRef = useRef<HTMLDivElement>(null);
@@ -174,14 +174,19 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   type ColWidthKey = 'last' | 'chg' | 'chgPct' | 'volume' | 'extHours';
   const DEFAULT_COL_WIDTHS: Record<ColWidthKey, number> = {
-    last: 76,
-    chg: 62,
-    chgPct: 58,
-    volume: 58,
-    extHours: 48,
+    last: 72,
+    chg: 58,
+    chgPct: 52,
+    volume: 54,
+    extHours: 46,
   };
   const [colWidths, setColWidths] = useState<Record<ColWidthKey, number>>(() => {
     try {
+      const migrated = localStorage.getItem('tp_watchlist_compact_v2');
+      if (!migrated) {
+        localStorage.setItem('tp_watchlist_compact_v2', '1');
+        return DEFAULT_COL_WIDTHS;
+      }
       const raw = localStorage.getItem('tp_watchlist_col_widths_v1');
       if (raw) return { ...DEFAULT_COL_WIDTHS, ...JSON.parse(raw) };
     } catch {}
@@ -189,10 +194,15 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   });
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     try {
+      const migrated = localStorage.getItem('tp_sidebar_compact_v2');
+      if (!migrated) {
+        localStorage.setItem('tp_sidebar_compact_v2', '1');
+        return 284;
+      }
       const saved = Number(localStorage.getItem('tp_watchlist_sidebar_w_v1'));
-      if (Number.isFinite(saved) && saved >= 270 && saved <= 520) return saved;
+      if (Number.isFinite(saved) && saved >= 256 && saved <= 520) return saved;
     } catch {}
-    return 326;
+    return 284;
   });
 
   useEffect(() => {
@@ -220,7 +230,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
     document.body.style.cursor = 'col-resize';
     const onMove = (ev: MouseEvent) => {
       const delta = startX - ev.clientX;
-      setSidebarWidth(Math.max(270, Math.min(520, startW + delta)));
+      setSidebarWidth(Math.max(256, Math.min(520, startW + delta)));
     };
     const onUp = () => {
       document.body.style.cursor = '';
@@ -659,7 +669,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   }, [cols]);
 
   const gridColsStyle = useMemo(() => {
-    const parts = ['minmax(92px, 1fr)', ...visibleRightCols.map((k) => `${colWidths[k]}px`)];
+    const parts = ['minmax(82px, 1fr)', ...visibleRightCols.map((k) => `${colWidths[k]}px`)];
     return { gridTemplateColumns: parts.join(' ') };
   }, [visibleRightCols, colWidths]);
 
@@ -712,26 +722,26 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   };
 
   return (
-    <div className="flex gap-[4px] shrink-0 h-full select-none">
+    <div className="flex gap-[3px] shrink-0 h-full select-none">
       {/* Main Right Sidebar Panel */}
       {visible && (
         <aside
           ref={splitContainerRef}
           style={{ width: `${effectiveSidebarWidth}px` }}
-          className="relative hidden lg:flex flex-col bg-[var(--bg-surface)] rounded-[6px] overflow-hidden h-full"
+          className="relative hidden lg:flex flex-col bg-[var(--bg-surface)] rounded-[4px] overflow-hidden h-full"
         >
           {/* Draggable left-edge sidebar width resizer */}
           <div
             onMouseDown={handleStartResizeSidebar}
-            onDoubleClick={() => setSidebarWidth(326)}
+            onDoubleClick={() => setSidebarWidth(284)}
             title="Drag to resize panel width (Double-click to reset)"
             className="absolute left-0 top-0 bottom-0 w-[4px] cursor-col-resize hover:bg-[var(--accent)]/40 z-30 transition-colors"
           />
           {/* WATCHLIST TAB */}
           {activeTab === 'watchlist' && activeList && (
             <>
-              {/* Watchlist Header (TradingView Screenshot 1 & 7 & 8) */}
-              <div className="h-[42px] px-2.5 flex items-center justify-between shrink-0 relative">
+              {/* Watchlist Header (Compact TradingView 34px Header) */}
+              <div className="h-[34px] px-2 flex items-center justify-between shrink-0 relative">
                 {/* Left: Main v Dropdown */}
                 <div className="relative" ref={listMenuRef}>
                   <button
@@ -740,16 +750,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                       setListMenuOpen((v) => !v);
                       setMoreMenuOpen(false);
                     }}
-                    className={`h-8 px-2 rounded-md inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-[var(--text-main)] transition-colors cursor-pointer ${
+                    className={`h-7 px-1.5 rounded-[5px] inline-flex items-center gap-1.5 text-[13px] font-semibold text-[var(--text-main)] transition-colors cursor-pointer ${
                       listMenuOpen ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
                     }`}
                   >
-                    <FlagRibbon color={activeList.color || '#f23645'} size={13} />
-                    <span className="max-w-[130px] truncate">{activeList.name}</span>
+                    <FlagRibbon color={activeList.color || '#f23645'} size={12} />
+                    <span className="max-w-[120px] truncate">{activeList.name}</span>
                     {listMenuOpen ? (
-                      <ChevronUp className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                      <ChevronUp className="w-3 h-3 text-[var(--text-muted)]" />
                     ) : (
-                      <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                      <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
                     )}
                   </button>
 
@@ -906,9 +916,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                     type="button"
                     onClick={onOpenSearch}
                     title="Add symbol"
-                    className="w-7 h-7 rounded-md hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                    className="w-6 h-6 rounded-[4px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
                   >
-                    <Plus className="w-[18px] h-[18px]" strokeWidth={1.7} />
+                    <Plus className="w-[16px] h-[16px]" strokeWidth={1.6} />
                   </button>
 
                   <button
@@ -917,11 +927,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                       onUpdateWatchlistPrefs((p) => ({ ...p, tableView: !p.tableView }))
                     }
                     title={watchlistPrefs.tableView ? 'Compact View' : 'Advanced Table View'}
-                    className={`w-7 h-7 rounded-md hover:bg-[var(--bg-hover)] inline-flex items-center justify-center cursor-pointer ${
+                    className={`w-6 h-6 rounded-[4px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center cursor-pointer ${
                       watchlistPrefs.tableView ? 'bg-[var(--bg-hover)] text-[var(--accent)]' : 'text-[var(--text-main)]'
                     }`}
                   >
-                    <CornerFullscreenIcon className="w-[16px] h-[16px]" />
+                    <CornerFullscreenIcon className="w-[15px] h-[15px]" />
                   </button>
 
                   {/* Screenshot 8 (...) More Options Dropdown */}
@@ -933,11 +943,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         setListMenuOpen(false);
                       }}
                       title="Watchlist Options"
-                      className={`w-7 h-7 rounded-md inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer ${
+                      className={`w-6 h-6 rounded-[4px] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer ${
                         moreMenuOpen ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
                       }`}
                     >
-                      <MoreHorizontal className="w-[18px] h-[18px]" strokeWidth={1.7} />
+                      <MoreHorizontal className="w-[16px] h-[16px]" strokeWidth={1.6} />
                     </button>
 
                     {moreMenuOpen && (
@@ -1184,16 +1194,16 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 </div>
               )}
 
-              {/* Resizable Column Headers (Exact TradingView: Symbol | Last | Chg | Chg%) */}
+              {/* Resizable Column Headers (Exact Compact TradingView: Symbol | Last | Chg | Chg%) */}
               <div
                 style={gridColsStyle}
-                className="grid items-stretch h-[29px] px-2 text-[12px] font-normal text-[var(--text-muted)] border-b border-[var(--border)] shrink-0"
+                className="grid items-stretch h-[24px] px-1.5 text-[11px] font-normal text-[var(--text-muted)] border-b border-[var(--border)] shrink-0"
               >
-                <div className="relative flex items-center min-w-0 pr-1.5">
+                <div className="relative flex items-center min-w-0 pr-1">
                   <button
                     type="button"
                     onClick={() => handleSort('sym')}
-                    className="w-full h-full text-left inline-flex items-center gap-1 hover:text-[var(--text-main)] cursor-pointer pl-1.5 truncate"
+                    className="w-full h-full text-left inline-flex items-center gap-1 hover:text-[var(--text-main)] cursor-pointer pl-1 truncate"
                   >
                     <span>Symbol</span>
                     {sortKey === 'sym' && (
@@ -1230,7 +1240,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                   const isSorted = meta.sort && sortKey === meta.sort;
 
                   return (
-                    <div key={colKey} className="relative flex items-center justify-end min-w-0 px-1.5">
+                    <div key={colKey} className="relative flex items-center justify-end min-w-0 px-1">
                       {meta.sort ? (
                         <button
                           type="button"
@@ -1424,11 +1434,11 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         onMouseEnter={() => onPrefetchSymbol?.(w.sym)}
                         onClick={() => onSelectSymbol(w.sym)}
                         style={gridColsStyle}
-                        className={`group relative grid items-center pl-0 pr-2 h-[32px] text-[13px] font-normal cursor-pointer transition-colors border-b border-[var(--border)]/45 ${
+                        className={`group relative grid items-center pl-0 pr-1.5 h-[26px] text-[12px] font-normal cursor-pointer transition-colors ${
                           isDragging ? 'opacity-40' : ''
                         } ${
                           isActive
-                            ? 'ring-1 ring-inset ring-[var(--text-main)] rounded-[4px] bg-[var(--bg-surface)] z-[1]'
+                            ? 'ring-1 ring-inset ring-[var(--text-main)]/80 rounded-[3px] bg-[var(--bg-surface)] z-[1]'
                             : 'hover:bg-[var(--bg-hover)]/75'
                         }`}
                       >
@@ -1441,14 +1451,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         )}
 
                         {/* Column 1: Flag + Logo + Symbol/Name */}
-                        <div className="flex items-center gap-1.5 min-w-0 pr-1.5">
+                        <div className="flex items-center gap-1 min-w-0 pr-1">
                           <button
                             type="button"
                             onClick={(e) => cycleFlagColor(e, w.sym)}
                             title="Flag symbol (click to cycle color)"
-                            className="w-3 h-5 inline-flex items-center justify-center shrink-0 text-[var(--text-muted)] cursor-pointer"
+                            className="w-2.5 h-4 inline-flex items-center justify-center shrink-0 text-[var(--text-muted)] cursor-pointer"
                           >
-                            <FlagRibbon color={w.flagColor} size={10} />
+                            <FlagRibbon color={w.flagColor} size={9} />
                           </button>
 
                           {watchlistPrefs.showLogo && (
@@ -1456,7 +1466,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                               symbol={w.sym}
                               color={w.color}
                               letter={w.letter}
-                              size={18}
+                              size={16}
                             />
                           )}
 
@@ -1467,7 +1477,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
                         {/* Column 2: Last Price (Exact TradingView diff-highlighted live digits) */}
                         {cols.last && (
-                          <span className="text-right font-mono-num text-[var(--text-main)] font-normal tabular-nums px-1.5 truncate">
+                          <span className="text-right font-mono-num text-[var(--text-main)] font-normal tabular-nums px-1 whitespace-nowrap">
                             {t ? (
                               <SplitPrice
                                 formatted={fmtPrice(t.last)}
@@ -1485,7 +1495,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         {/* Column 3: Chg */}
                         {cols.chg && (
                           <span
-                            className={`text-right font-mono-num font-normal tabular-nums px-1.5 truncate ${
+                            className={`text-right font-mono-num font-normal tabular-nums px-1 whitespace-nowrap ${
                               t
                                 ? isUp
                                   ? 'text-[#089981]'
@@ -1502,7 +1512,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                         {/* Column 4: Chg% */}
                         {cols.chgPct && (
                           <span
-                            className={`text-right font-mono-num font-normal tabular-nums px-1.5 truncate ${
+                            className={`text-right font-mono-num font-normal tabular-nums px-1 whitespace-nowrap ${
                               t
                                 ? isUp
                                   ? 'text-[#089981]'
@@ -1516,14 +1526,14 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
                         {/* Optional Column 5: Volume */}
                         {cols.volume && (
-                          <span className="text-right font-mono-num font-normal tabular-nums text-[var(--text-muted)] text-[12px] px-1.5 truncate">
+                          <span className="text-right font-mono-num font-normal tabular-nums text-[var(--text-muted)] text-[11.5px] px-1 truncate">
                             {t ? fmtCompact(t.baseVol ?? (t.last > 0 ? t.vol / t.last : 0)) : '-'}
                           </span>
                         )}
 
                         {/* Optional Column 6: Extended / 24h Range */}
                         {cols.extHours && (
-                          <span className="text-right font-mono-num font-normal tabular-nums text-[var(--text-muted)] text-[12px] px-1.5 truncate">
+                          <span className="text-right font-mono-num font-normal tabular-nums text-[var(--text-muted)] text-[11.5px] px-1 truncate">
                             {t && t.low > 0
                               ? `${(((t.high - t.low) / t.low) * 100).toFixed(1)}%`
                               : '-'}
@@ -1539,9 +1549,9 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                           }}
                           title={`Remove ${w.sym}`}
                           aria-label={`Remove ${w.sym}`}
-                          className="opacity-0 group-hover:opacity-100 absolute right-1.5 top-1/2 -translate-y-1/2 w-[26px] h-[26px] rounded-md bg-[var(--bg-hover)] hover:bg-[var(--border)] text-[var(--text-main)] hover:text-[var(--down)] inline-flex items-center justify-center shadow-xs transition-opacity cursor-pointer z-10"
+                          className="opacity-0 group-hover:opacity-100 absolute right-1 top-1/2 -translate-y-1/2 w-[22px] h-[22px] rounded bg-[var(--bg-hover)] hover:bg-[var(--border)] text-[var(--text-main)] hover:text-[var(--down)] inline-flex items-center justify-center shadow-xs transition-opacity cursor-pointer z-10"
                         >
-                          <Trash2 className="w-[14px] h-[14px]" strokeWidth={1.7} />
+                          <Trash2 className="w-[13px] h-[13px]" strokeWidth={1.7} />
                         </button>
                       </div>
                     );
@@ -1553,24 +1563,24 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               <div
                 onMouseDown={handleStartResizeSplit}
                 title="Drag to resize Watchlist / Details"
-                className="h-[5px] shrink-0 bg-[var(--bg-gutter)] hover:bg-[var(--accent)]/40 cursor-row-resize transition-colors"
+                className="h-[4px] shrink-0 bg-[var(--bg-gutter)] hover:bg-[var(--accent)]/40 cursor-row-resize transition-colors"
               />
 
-              {/* Bottom Scrollable Symbol Details Panel (Exact TradingView Full-Screen Match!) */}
+              {/* Bottom Scrollable Symbol Details Panel (Compact TradingView Match) */}
               <div
                 ref={detailsScrollRef}
-                className="flex-1 min-h-0 overflow-y-auto px-3.5 pt-3 pb-4 bg-[var(--bg-surface)]"
+                className="flex-1 min-h-0 overflow-y-auto px-3 pt-2 pb-3 bg-[var(--bg-surface)]"
               >
                 {/* Sticky Header Row: Logo + Symbol | Grid, Notes, More */}
-                <div className="flex items-center justify-between mb-1.5">
-                  <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
                     <CoinLogo
                       symbol={curMeta.sym}
                       color={curMeta.color}
                       letter={curMeta.letter}
-                      size={24}
+                      size={20}
                     />
-                    <span className="font-bold text-[15px] text-[var(--text-main)] tracking-tight truncate">
+                    <span className="font-bold text-[14px] text-[var(--text-main)] tracking-tight truncate">
                       {currentSymbol}
                     </span>
                   </div>
@@ -1579,37 +1589,37 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                       type="button"
                       onClick={() => setShowExtendedDetails((v) => !v)}
                       title="Toggle 24h High / Low Range"
-                      className={`w-7 h-7 rounded-md inline-flex items-center justify-center cursor-pointer ${
+                      className={`w-6 h-6 rounded-[4px] inline-flex items-center justify-center cursor-pointer ${
                         showExtendedDetails
                           ? 'bg-[var(--bg-active)] text-[var(--accent)]'
                           : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                       }`}
                     >
-                      <LayoutGrid className="w-[16px] h-[16px]" strokeWidth={1.6} />
+                      <LayoutGrid className="w-[15px] h-[15px]" strokeWidth={1.6} />
                     </button>
                     <button
                       type="button"
                       onClick={() => setNotesOpen((v) => !v)}
                       title={`Quick notes for ${currentSymbol}`}
-                      className={`w-7 h-7 rounded-md inline-flex items-center justify-center cursor-pointer ${
+                      className={`w-6 h-6 rounded-[4px] inline-flex items-center justify-center cursor-pointer ${
                         notesOpen || symbolNotes[currentSymbol]
                           ? 'bg-[var(--bg-active)] text-[var(--accent)]'
                           : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                       }`}
                     >
-                      <SquarePen className="w-[16px] h-[16px]" strokeWidth={1.6} />
+                      <SquarePen className="w-[15px] h-[15px]" strokeWidth={1.6} />
                     </button>
                     <div className="relative" ref={detailsMoreRef}>
                       <button
                         type="button"
                         onClick={() => setDetailsMoreOpen((v) => !v)}
                         title="More symbol actions"
-                        className="w-7 h-7 rounded-md hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                        className="w-6 h-6 rounded-[4px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
                       >
-                        <MoreHorizontal className="w-[16px] h-[16px]" strokeWidth={1.7} />
+                        <MoreHorizontal className="w-[15px] h-[15px]" strokeWidth={1.7} />
                       </button>
                       {detailsMoreOpen && (
-                        <div className="absolute right-0 top-8 w-48 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-50 text-xs text-[var(--text-main)]">
+                        <div className="absolute right-0 top-7 w-48 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-50 text-xs text-[var(--text-main)]">
                           <button
                             type="button"
                             onClick={() => {
@@ -1647,31 +1657,31 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 </div>
 
                 {/* Subtitle & Meta */}
-                <div className="flex items-center gap-1 text-[12px] text-[var(--text-main)] leading-snug">
+                <div className="flex items-center gap-1 text-[11.5px] text-[var(--text-main)] leading-snug">
                   <span className="truncate">{curMeta.name}</span>
-                  <ExternalLink className="w-3 h-3 text-[var(--text-muted)] shrink-0" />
+                  <ExternalLink className="w-2.5 h-2.5 text-[var(--text-muted)] shrink-0" />
                   <span className="text-[var(--text-muted)]">·</span>
                   <span className="font-medium text-[var(--text-main)]">BINANCE</span>
                 </div>
-                <div className="text-[11px] text-[var(--text-muted)] mt-0.5 mb-2">
+                <div className="text-[10.5px] text-[var(--text-muted)] mt-0.5 mb-1.5">
                   Spot · Crypto
                 </div>
 
                 {/* Hero Price + USDT + Change + Change% */}
-                <div className="flex items-baseline flex-wrap gap-x-1.5 gap-y-0.5">
-                  <span className="text-[24px] font-bold tracking-tight font-mono-num text-[var(--text-main)] leading-none tabular-nums">
+                <div className="flex items-baseline flex-wrap gap-x-1 gap-y-0.5">
+                  <span className="text-[22px] font-bold tracking-tight font-mono-num text-[var(--text-main)] leading-none tabular-nums">
                     {curTicker ? (
                       <SplitPrice formatted={fmtPrice(curTicker.last)} isUp={curIsUp} highlightTail={1} />
                     ) : (
                       '-'
                     )}
                   </span>
-                  <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase">
+                  <span className="text-[10.5px] font-semibold text-[var(--text-muted)] uppercase">
                     USDT
                   </span>
                   {curTicker && (
                     <span
-                      className={`text-[13px] font-semibold font-mono-num tabular-nums ml-1 ${
+                      className={`text-[12px] font-semibold font-mono-num tabular-nums ml-0.5 ${
                         curIsUp ? 'text-[#089981]' : 'text-[#f23645]'
                       }`}
                     >
@@ -1683,7 +1693,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
                 </div>
 
                 {/* Market Open Live Status */}
-                <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-[#089981] mt-1.5 mb-3">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-[#089981] mt-1 mb-2.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#089981]" />
                   <span>Market open</span>
                 </div>
@@ -2155,36 +2165,36 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         </aside>
       )}
 
-      {/* Far-Right TradingView Icon Rail (Exact 1:1 Match to Full-Screen Screenshots) */}
-      <aside className="w-[46px] bg-[var(--bg-surface)] rounded-tl-[6px] flex flex-col items-center py-2 justify-between shrink-0">
+      {/* Far-Right TradingView Icon Rail (Compact 40px Rail) */}
+      <aside className="w-[40px] bg-[var(--bg-surface)] rounded-tl-[4px] flex flex-col items-center py-1.5 justify-between shrink-0">
         {/* Top Rail Icons */}
-        <div className="flex flex-col items-center gap-1.5">
+        <div className="flex flex-col items-center gap-1">
           <button
             type="button"
             onClick={() => handleRailClick('watchlist')}
             title="Watchlist, details and news"
-            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[30px] h-[30px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'watchlist'
                 ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <WatchlistBookmarkIcon className="w-[20px] h-[20px]" />
+            <WatchlistBookmarkIcon className="w-[18px] h-[18px]" />
           </button>
 
           <button
             type="button"
             onClick={() => handleRailClick('alerts')}
             title="Alerts"
-            className={`relative w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`relative w-[30px] h-[30px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'alerts'
                 ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <AlarmClock className="w-[19px] h-[19px]" strokeWidth={1.45} />
+            <AlarmClock className="w-[17px] h-[17px]" strokeWidth={1.45} />
             {activeAlertsCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--down)]" />
+              <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--down)]" />
             )}
           </button>
 
@@ -2192,34 +2202,34 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             type="button"
             onClick={() => handleRailClick('orderbook')}
             title="Order Book & Live Market Depth"
-            className={`w-[36px] h-[36px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[30px] h-[30px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'orderbook'
                 ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <Layers className="w-[19px] h-[19px]" strokeWidth={1.45} />
+            <Layers className="w-[17px] h-[17px]" strokeWidth={1.45} />
           </button>
         </div>
 
         {/* Bottom Rail Icons (All wired to real live features!) */}
-        <div className="flex flex-col items-center gap-1">
+        <div className="flex flex-col items-center gap-0.5">
           <button
             type="button"
             onClick={() => onOpenIndicators?.()}
             title="Indicators & Strategies"
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Sparkles className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <Sparkles className="w-[16px] h-[16px]" strokeWidth={1.45} />
           </button>
 
           <button
             type="button"
             onClick={onOpenSearch}
             title="Symbol Screener / Search (Ctrl+K)"
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Target className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <Target className="w-[16px] h-[16px]" strokeWidth={1.45} />
           </button>
 
           <button
@@ -2232,18 +2242,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               }, 80);
             }}
             title="Technicals & Seasonals"
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Mountain className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <Mountain className="w-[16px] h-[16px]" strokeWidth={1.45} />
           </button>
 
           <button
             type="button"
             onClick={() => onOpenSettings('events')}
             title="Calendar & Events Settings"
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Calendar className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <Calendar className="w-[16px] h-[16px]" strokeWidth={1.45} />
           </button>
 
           <button
@@ -2254,18 +2264,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               if (!visible) onToggleVisible();
             }}
             title="Live Market Trades Feed"
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Rss className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <Rss className="w-[16px] h-[16px]" strokeWidth={1.45} />
           </button>
 
           <button
             type="button"
             onClick={() => handleRailClick('alerts')}
             title="Alert Notifications"
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Bell className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <Bell className="w-[16px] h-[16px]" strokeWidth={1.45} />
           </button>
 
           <button
@@ -2279,27 +2289,27 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               }, 60);
             }}
             title={`Quick Notes for ${currentSymbol}`}
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.45} />
+            <MessageSquare className="w-[16px] h-[16px]" strokeWidth={1.45} />
           </button>
 
           <button
             type="button"
             onClick={onToggleTrade}
             title="Paper Trading Panel"
-            className="w-[34px] h-[34px] my-0.5 rounded-full flex items-center justify-center text-[var(--text-main)] hover:opacity-85 transition-opacity cursor-pointer"
+            className="w-[30px] h-[30px] my-0.5 rounded-full flex items-center justify-center text-[var(--text-main)] hover:opacity-85 transition-opacity cursor-pointer"
           >
-            <AppsCircleIcon className="w-[26px] h-[26px]" />
+            <AppsCircleIcon className="w-[23px] h-[23px]" />
           </button>
 
           <button
             type="button"
             onClick={() => setShortcutsOpen(true)}
             title="Keyboard Shortcuts"
-            className="w-[34px] h-[34px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <HelpCircle className="w-[19px] h-[19px]" strokeWidth={1.45} />
+            <HelpCircle className="w-[17px] h-[17px]" strokeWidth={1.45} />
           </button>
         </div>
       </aside>
