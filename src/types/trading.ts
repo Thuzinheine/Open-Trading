@@ -277,8 +277,33 @@ export interface DrawingObject {
   stopColor?: string;
   targetColor?: string;
   compactStatsMode?: boolean;
+  // Fib Retracement styling & options (exact TradingView parity)
+  fibTrendLineEnabled?: boolean;
+  fibTrendLineColor?: string;
+  fibTrendLineWidth?: number;
+  fibTrendLineStyle?: DrawingLineStyle;
+  fibLevels?: FibLevelConfig[];
+  fibUseOneColor?: boolean;
+  fibOneColor?: string;
+  fibBackgroundEnabled?: boolean;
+  fibBackgroundOpacity?: number; // 0..100
+  fibReverse?: boolean;
+  fibShowPrices?: boolean;
+  fibShowLevels?: boolean;
+  fibLevelsFormat?: 'values' | 'percents';
+  fibLabelH?: TextAlignH;
+  fibLabelV?: TextAlignV;
+  fibTextEnabled?: boolean;
+  fibFontSize?: number;
+  fibLogScale?: boolean;
   // Timeframe visibility
   visibility?: DrawingVisibility;
+}
+
+export interface FibLevelConfig {
+  ratio: number;
+  enabled: boolean;
+  color: string;
 }
 
 export interface DrawingTemplate {

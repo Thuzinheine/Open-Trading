@@ -409,8 +409,8 @@ export const LeftToolbar: React.FC<LeftToolbarProps> = ({
                       title={isFav ? 'Remove from Favorites bar' : 'Add to Favorites bar'}
                       className={`p-0.5 rounded transition-opacity cursor-pointer ${
                         isFav
-                          ? 'opacity-100 text-[var(--amber)]'
-                          : 'opacity-0 group-hover/item:opacity-100 text-[var(--text-muted)] hover:text-[var(--amber)]'
+                          ? 'opacity-100 text-[#131722] dark:text-[#f0f3fa]'
+                          : 'opacity-0 group-hover/item:opacity-100 text-[var(--text-muted)] hover:text-[#131722] dark:hover:text-[#f0f3fa]'
                       }`}
                     >
                       <Star className={`w-3.5 h-3.5 ${isFav ? 'fill-current' : ''}`} />

@@ -272,6 +272,7 @@ export const TOOL_GROUPS: ToolGroup[] = [
       {
         id: 'fib',
         label: 'Fib retracement',
+        shortcut: 'Alt + F',
         section: 'FIBONACCI',
         renderIcon: (c) => (
           <SvgIcon className={c}>

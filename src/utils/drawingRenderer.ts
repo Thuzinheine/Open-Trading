@@ -1,4 +1,4 @@
-import { AnchorPoint, DrawingLineStyle, DrawingObject } from '../types/trading';
+import { AnchorPoint, DrawingLineStyle, DrawingObject, FibLevelConfig } from '../types/trading';
 import { fmtPrice } from './binance';
 
 export interface ScreenPoint {
@@ -41,15 +41,55 @@ export interface HandleHit {
   y: number;
 }
 
-const FIB_LEVELS = [
-  { ratio: 0, label: '0%', color: '#787b86' },
-  { ratio: 0.236, label: '23.6%', color: '#f23645' },
-  { ratio: 0.382, label: '38.2%', color: '#f59e0b' },
-  { ratio: 0.5, label: '50%', color: '#089981' },
-  { ratio: 0.618, label: '61.8%', color: '#2962ff' },
-  { ratio: 0.786, label: '78.6%', color: '#9c27b0' },
-  { ratio: 1, label: '100%', color: '#787b86' },
+// Exact 24 TradingView Fib Retracement levels (12 rows × 2 columns in exact TradingView order & colors)
+export const DEFAULT_FIB_LEVELS: FibLevelConfig[] = [
+  { ratio: 0, enabled: true, color: '#787b86' },
+  { ratio: 0.236, enabled: true, color: '#f23645' },
+  { ratio: 0.382, enabled: true, color: '#ff9800' },
+  { ratio: 0.5, enabled: true, color: '#4caf50' },
+  { ratio: 0.618, enabled: true, color: '#089981' },
+  { ratio: 0.786, enabled: true, color: '#00bcd4' },
+  { ratio: 1, enabled: true, color: '#787b86' },
+  { ratio: 1.618, enabled: true, color: '#2962ff' },
+  { ratio: 2.618, enabled: true, color: '#f23645' },
+  { ratio: 3.618, enabled: true, color: '#9c27b0' },
+  { ratio: 4.236, enabled: true, color: '#e91e63' },
+  { ratio: 1.272, enabled: false, color: '#ff9800' },
+  { ratio: 1.414, enabled: false, color: '#f23645' },
+  { ratio: 2.272, enabled: false, color: '#ff9800' },
+  { ratio: 2.414, enabled: false, color: '#4caf50' },
+  { ratio: 2, enabled: false, color: '#089981' },
+  { ratio: 3, enabled: false, color: '#00bcd4' },
+  { ratio: 3.272, enabled: false, color: '#787b86' },
+  { ratio: 3.414, enabled: false, color: '#2962ff' },
+  { ratio: 4, enabled: false, color: '#f23645' },
+  { ratio: 4.272, enabled: false, color: '#9c27b0' },
+  { ratio: 4.414, enabled: false, color: '#e91e63' },
+  { ratio: 4.618, enabled: false, color: '#ff9800' },
+  { ratio: 4.764, enabled: false, color: '#089981' },
 ];
+
+export function getEffectiveFibLevels(s: DrawingObject): FibLevelConfig[] {
+  if (s.fibLevels && s.fibLevels.length > 0) return s.fibLevels;
+  return DEFAULT_FIB_LEVELS;
+}
+
+export function computeFibLevelPrice(
+  p1Price: number,
+  p2Price: number,
+  ratio: number,
+  reverse?: boolean,
+  logScale?: boolean
+): number {
+  const start = reverse ? p2Price : p1Price;
+  const end = reverse ? p1Price : p2Price;
+  if (logScale && start > 0 && end > 0) {
+    const logStart = Math.log(start);
+    const logEnd = Math.log(end);
+    return Math.exp(logEnd - (logEnd - logStart) * ratio);
+  }
+  return end - (end - start) * ratio;
+}
 
 const FIB_EXT_LEVELS = [
   { ratio: 0, label: '0%', color: '#787b86' },
@@ -607,10 +647,42 @@ export function hitTestDrawings(
       const a = bridge.ptToScreen(s.p1);
       const b = bridge.ptToScreen(s.p2);
       if (a && b && distToLine(x, y, a.x, a.y, b.x, b.y) <= 8) return { drawingId: s.id };
+    } else if (s.type === 'fib' && s.p1 && s.p2) {
+      const a = bridge.ptToScreen(s.p1);
+      const b = bridge.ptToScreen(s.p2);
+      if (a && b) {
+        if (s.fibTrendLineEnabled !== false && distToSegment(x, y, a.x, a.y, b.x, b.y) <= 8) {
+          return { drawingId: s.id };
+        }
+        const leftX = Math.min(a.x, b.x);
+        const rightX = Math.max(a.x, b.x, leftX + 130);
+        const extLeft = s.extend === 'left' || s.extend === 'both';
+        const extRight = s.extend === 'right' || s.extend === 'both';
+        const lineX1 = extLeft ? 0 : leftX;
+        const lineX2 = extRight ? 100000 : rightX;
+        const enabledLevels = getEffectiveFibLevels(s).filter((l) => l.enabled);
+        for (const lvl of enabledLevels) {
+          const price = computeFibLevelPrice(
+            s.p1.price,
+            s.p2.price,
+            lvl.ratio,
+            s.fibReverse,
+            s.fibLogScale
+          );
+          const ly = bridge.priceToY(price);
+          if (ly !== null && x >= lineX1 - 8 && x <= lineX2 + 8 && Math.abs(y - ly) <= 7) {
+            return { drawingId: s.id };
+          }
+        }
+        const minY = Math.min(a.y, b.y) - 5;
+        const maxY = Math.max(a.y, b.y) + 5;
+        if (x >= lineX1 - 5 && x <= lineX2 + 5 && y >= minY && y <= maxY) {
+          return { drawingId: s.id };
+        }
+      }
     } else if (
       (s.type === 'rect' ||
         s.type === 'ellipse' ||
-        s.type === 'fib' ||
         s.type === 'price_range' ||
         s.type === 'date_range' ||
         s.type === 'measure') &&
@@ -1087,44 +1159,168 @@ export function renderDrawingObject(
       const a = bridge.ptToScreen(s.p1);
       const b = bridge.ptToScreen(s.p2);
       if (!a || !b) break;
-      const leftX = Math.min(a.x, b.x);
-      const rightX = Math.max(a.x, b.x, leftX + 130);
-      const pDiff = s.p2.price - s.p1.price;
 
-      ctx.setLineDash([3, 3]);
-      ctx.strokeStyle = 'rgba(120,123,134,0.6)';
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      const baseLeftX = Math.min(a.x, b.x);
+      const baseRightX = Math.max(a.x, b.x, baseLeftX + 130);
+      const extLeft = s.extend === 'left' || s.extend === 'both';
+      const extRight = s.extend === 'right' || s.extend === 'both';
+      const drawLeftX = extLeft ? 0 : baseLeftX;
+      const drawRightX = extRight ? width : baseRightX;
 
-      FIB_LEVELS.forEach((lvl, idx) => {
-        const price = s.p2!.price - pDiff * lvl.ratio;
-        const y = bridge.priceToY(price);
-        if (y === null) return;
+      const levels = getEffectiveFibLevels(s)
+        .filter((l) => l.enabled)
+        .map((lvl) => {
+          const price = computeFibLevelPrice(
+            s.p1!.price,
+            s.p2!.price,
+            lvl.ratio,
+            s.fibReverse,
+            s.fibLogScale
+          );
+          const y = bridge.priceToY(price);
+          return {
+            ...lvl,
+            price,
+            y,
+            effColor: s.fibUseOneColor && s.fibOneColor ? s.fibOneColor : lvl.color,
+          };
+        })
+        .filter((item): item is typeof item & { y: number } => item.y !== null)
+        .sort((u, v) => u.y - v.y);
 
-        if (idx > 0) {
-          const prevPrice = s.p2!.price - pDiff * FIB_LEVELS[idx - 1].ratio;
-          const prevY = bridge.priceToY(prevPrice);
-          if (prevY !== null) {
-            ctx.fillStyle = `${lvl.color}14`;
-            ctx.fillRect(leftX, Math.min(y, prevY), rightX - leftX, Math.abs(y - prevY));
-          }
+      // 1. Background bands between adjacent enabled levels
+      const bgEnabled = s.fibBackgroundEnabled !== false;
+      const bgOpacity01 = (s.fibBackgroundOpacity ?? 12) / 100;
+      if (bgEnabled && bgOpacity01 > 0 && levels.length > 1) {
+        ctx.save();
+        for (let i = 1; i < levels.length; i++) {
+          const prev = levels[i - 1];
+          const curr = levels[i];
+          ctx.fillStyle = hexWithOpacity(curr.effColor, bgOpacity01);
+          ctx.fillRect(
+            drawLeftX,
+            Math.min(prev.y, curr.y),
+            drawRightX - drawLeftX,
+            Math.abs(curr.y - prev.y)
+          );
         }
+        ctx.restore();
+      }
 
-        ctx.strokeStyle = lvl.color;
-        ctx.lineWidth = 1.2;
+      // 2. Diagonal Trend Line connecting p1 -> p2
+      if (s.fibTrendLineEnabled !== false) {
+        ctx.save();
+        ctx.strokeStyle = s.fibTrendLineColor || '#787b86';
+        ctx.lineWidth = s.fibTrendLineWidth || 1;
+        applyLineDash(ctx, s.fibTrendLineStyle || 'dashed');
         ctx.beginPath();
-        ctx.moveTo(leftX, y);
-        ctx.lineTo(rightX, y);
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
         ctx.stroke();
+        ctx.restore();
+      }
 
-        ctx.fillStyle = lvl.color;
-        ctx.font = `400 10.5px ${TV_FONT_STACK}`;
-        ctx.textAlign = 'left';
-        ctx.fillText(`${lvl.label} (${fmtPrice(price)})`, leftX + 4, y - 3);
-      });
+      // 3. Level horizontal lines + labels
+      const lvlWidth = s.lineWidth || 1;
+      const lvlStyle: DrawingLineStyle = s.lineStyle || 'solid';
+      const showLevels = s.fibShowLevels !== false;
+      const showPrices = s.fibShowPrices !== false;
+      const levelsFmt = s.fibLevelsFormat || 'values';
+      const labelH = s.fibLabelH || 'left';
+      const labelV = s.fibLabelV || 'middle';
+      const fontSize = s.fibFontSize || 12;
+
+      ctx.save();
+      ctx.lineWidth = lvlWidth;
+      applyLineDash(ctx, lvlStyle);
+
+      for (const lvl of levels) {
+        const py = Math.round(lvl.y) + 0.5;
+        ctx.strokeStyle = lvl.effColor;
+        ctx.beginPath();
+        ctx.moveTo(drawLeftX, py);
+        ctx.lineTo(drawRightX, py);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      if (showLevels || showPrices) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.font = `400 ${fontSize}px ${TV_FONT_STACK}`;
+        for (const lvl of levels) {
+          const ratioStr =
+            levelsFmt === 'percents'
+              ? `${Number((lvl.ratio * 100).toFixed(2))}%`
+              : `${lvl.ratio}`;
+          const parts: string[] = [];
+          if (showLevels) parts.push(ratioStr);
+          if (showPrices) parts.push(`(${fmtPrice(lvl.price)})`);
+          const labelText = parts.join(' ');
+          if (!labelText) continue;
+
+          let tx = drawLeftX;
+          if (labelH === 'left') {
+            if (extLeft) {
+              ctx.textAlign = 'left';
+              tx = 8;
+            } else {
+              ctx.textAlign = 'right';
+              tx = drawLeftX - 6;
+            }
+          } else if (labelH === 'center') {
+            ctx.textAlign = 'center';
+            tx = (drawLeftX + drawRightX) / 2;
+          } else {
+            if (extRight) {
+              ctx.textAlign = 'right';
+              tx = width - 8;
+            } else {
+              ctx.textAlign = 'left';
+              tx = drawRightX + 6;
+            }
+          }
+
+          let ty = lvl.y;
+          if (labelV === 'top') {
+            ctx.textBaseline = 'bottom';
+            ty = lvl.y - 3;
+          } else if (labelV === 'bottom') {
+            ctx.textBaseline = 'top';
+            ty = lvl.y + 4;
+          } else {
+            ctx.textBaseline = 'middle';
+            ty = lvl.y;
+          }
+
+          ctx.fillStyle = lvl.effColor;
+          ctx.fillText(labelText, tx, ty);
+        }
+        ctx.restore();
+      }
+
+      // Optional custom text on Fib Retracement
+      if (s.fibTextEnabled !== false && s.text && s.text.trim()) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.font = `400 ${fontSize}px ${TV_FONT_STACK}`;
+        ctx.fillStyle = s.textColor || (s.fibUseOneColor && s.fibOneColor ? s.fibOneColor : '#787b86');
+        const th = s.textAlignH || 'center';
+        const tv = s.textAlignV || 'middle';
+        const minY = Math.min(a.y, b.y);
+        const maxY = Math.max(a.y, b.y);
+        const tx =
+          th === 'left'
+            ? drawLeftX + 8
+            : th === 'right'
+            ? drawRightX - 8
+            : (drawLeftX + drawRightX) / 2;
+        const ty = tv === 'top' ? minY - 6 : tv === 'bottom' ? maxY + 6 : (minY + maxY) / 2;
+        ctx.textAlign = th;
+        ctx.textBaseline = tv === 'top' ? 'bottom' : tv === 'bottom' ? 'top' : 'middle';
+        ctx.fillText(s.text.trim(), tx, ty);
+        ctx.restore();
+      }
 
       if (showHandles) {
         drawHandleDot(ctx, a.x, a.y, isSelected);

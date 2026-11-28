@@ -1470,6 +1470,11 @@ export default function App() {
           setActiveTool('vline');
           return;
         }
+        if (k === 'f') {
+          e.preventDefault();
+          setActiveTool('fib');
+          return;
+        }
         if (k === 'c') {
           e.preventDefault();
           setActiveTool('crossline');

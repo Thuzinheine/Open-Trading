@@ -19,6 +19,7 @@ import { DEFAULT_VISIBILITY } from '../utils/storage';
 import { INTERVAL_SECONDS } from '../utils/binance';
 import { ColorPalettePopover } from './ColorPalettePopover';
 import { TvSelect } from './TvSelect';
+import { FibSettingsStyleTab } from './FibSettingsStyleTab';
 
 interface DrawingSettingsModalProps {
   open: boolean;
@@ -208,11 +209,18 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
   useEffect(() => {
     if (open && drawing) {
       const isPos = drawing.type === 'long_pos' || drawing.type === 'short_pos';
+      const isFib = drawing.type === 'fib';
       if (isPos) {
         setTab(
           initialTab === 'style' || initialTab === 'visibility' || initialTab === 'inputs'
             ? initialTab
             : 'inputs'
+        );
+      } else if (isFib) {
+        setTab(
+          initialTab === 'style' || initialTab === 'coordinates' || initialTab === 'visibility'
+            ? initialTab
+            : 'style'
         );
       } else {
         setTab(initialTab === 'inputs' ? 'style' : initialTab);
@@ -230,6 +238,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
   if (!open || !drawing) return null;
 
   const isPositionTool = drawing.type === 'long_pos' || drawing.type === 'short_pos';
+  const isFibTool = drawing.type === 'fib';
   const isLong = drawing.type === 'long_pos';
   const toolDef = ALL_TOOLS_MAP[drawing.type];
   const displayTitle =
@@ -372,6 +381,12 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
         { id: 'style', label: 'Style' },
         { id: 'visibility', label: 'Visibility' },
       ]
+    : isFibTool
+    ? [
+        { id: 'style', label: 'Style' },
+        { id: 'coordinates', label: 'Coordinates' },
+        { id: 'visibility', label: 'Visibility' },
+      ]
     : [
         { id: 'style', label: 'Style' },
         { id: 'text', label: 'Text' },
@@ -383,7 +398,9 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 select-none pointer-events-none">
       <div
         style={{ transform: `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)` }}
-        className="pointer-events-auto w-full max-w-[388px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.18)] overflow-visible flex flex-col"
+        className={`pointer-events-auto w-full ${
+          isFibTool ? 'max-w-[404px]' : 'max-w-[388px]'
+        } bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.18)] overflow-visible flex flex-col`}
         onClick={(e) => {
           e.stopPropagation();
           if (activePopover !== 'none') setActivePopover('none');
@@ -474,8 +491,11 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
         {/* Tab Body (Fits content cleanly — no dead empty whitespace gap!) */}
         <div
           className={`px-5 py-4 text-[13px] space-y-3.5 ${
-            tab === 'visibility' || tab === 'coordinates' || tab === 'inputs'
-              ? 'max-h-[64vh] overflow-y-auto'
+            tab === 'visibility' ||
+            tab === 'coordinates' ||
+            tab === 'inputs' ||
+            (isFibTool && tab === 'style')
+              ? 'max-h-[66vh] overflow-y-auto'
               : 'overflow-visible'
           }`}
         >
@@ -952,8 +972,13 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
             </div>
           )}
 
+          {/* ===== FIB RETRACEMENT: STYLE TAB (Exact TradingView Layout) ===== */}
+          {tab === 'style' && isFibTool && (
+            <FibSettingsStyleTab drawing={drawing} onPatch={patch} />
+          )}
+
           {/* ===== ALL OTHER TOOLS: STYLE TAB ===== */}
-          {tab === 'style' && !isPositionTool && (
+          {tab === 'style' && !isPositionTool && !isFibTool && (
             <>
               {/* Line Row: Swatch + Line Preview Popover + Left/Right End Caps */}
               <div className="flex items-center justify-between gap-3">
