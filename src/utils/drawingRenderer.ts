@@ -92,9 +92,9 @@ function drawHandleDot(ctx: CanvasRenderingContext2D, x: number, y: number, acti
   ctx.setLineDash([]);
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = '#2962ff';
-  ctx.lineWidth = active ? 2.2 : 1.8;
+  ctx.lineWidth = active ? 1.85 : 1.55;
   ctx.beginPath();
-  ctx.arc(x, y, active ? 4.8 : 4.2, 0, Math.PI * 2);
+  ctx.arc(Math.round(x), Math.round(y), active ? 4.3 : 3.9, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.restore();
@@ -142,18 +142,22 @@ function drawRoundedRect(
   ctx.roundRect(x, y, w, h, r);
 }
 
+const TV_FONT_STACK =
+  '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
+
 function drawPriceTag(ctx: CanvasRenderingContext2D, x: number, y: number, price: number, color: string) {
   const lbl = fmtPrice(price);
   ctx.save();
   ctx.setLineDash([]);
-  ctx.font = '600 10px "JetBrains Mono", monospace';
+  ctx.font = `400 10.5px ${TV_FONT_STACK}`;
   const tw = ctx.measureText(lbl).width + 10;
   ctx.fillStyle = color;
-  drawRoundedRect(ctx, x - tw / 2, y - 22, tw, 17, 3);
+  drawRoundedRect(ctx, Math.round(x - tw / 2), Math.round(y - 21), Math.round(tw), 17, 3);
   ctx.fill();
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
-  ctx.fillText(lbl, x, y - 10);
+  ctx.textBaseline = 'middle';
+  ctx.fillText(lbl, Math.round(x), Math.round(y - 12.5));
   ctx.restore();
 }
 
@@ -198,10 +202,10 @@ function strokeLineWithText(
   const uy = dy / len;
   const angle = Math.atan2(uy, ux);
   const lines = s.text!.split('\n');
-  const fontSize = s.fontSize || (s.type === 'hline' ? 12 : 14);
-  const weight = s.fontBold ? '700' : '500';
+  const fontSize = s.fontSize || (s.type === 'hline' ? 12 : 13);
+  const weight = s.fontBold ? '700' : '400';
   const italic = s.fontItalic ? 'italic ' : '';
-  const fontStr = `${italic}${weight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
+  const fontStr = `${italic}${weight} ${fontSize}px ${TV_FONT_STACK}`;
   const textColor = s.textColor || s.color || '#2962ff';
 
   ctx.save();
@@ -298,8 +302,8 @@ function strokeLineWithText(
 function drawLineText(ctx: CanvasRenderingContext2D, s: DrawingObject, a: ScreenPoint, b: ScreenPoint) {
   if (!s.text || !s.text.trim()) return;
   const lines = s.text.split('\n');
-  const fontSize = s.fontSize || 14;
-  const weight = s.fontBold ? '700' : '500';
+  const fontSize = s.fontSize || 13;
+  const weight = s.fontBold ? '700' : '400';
   const italic = s.fontItalic ? 'italic ' : '';
   const textColor = s.textColor || s.color || '#2962ff';
   const alignH = s.textAlignH || 'center';
@@ -360,8 +364,8 @@ function drawBoxText(
 ) {
   if (!s.text || !s.text.trim()) return;
   const lines = s.text.split('\n');
-  const fontSize = s.fontSize || 14;
-  const weight = s.fontBold ? '700' : '500';
+  const fontSize = s.fontSize || 13;
+  const weight = s.fontBold ? '700' : '400';
   const italic = s.fontItalic ? 'italic ' : '';
   const textColor = s.textColor || s.color || '#2962ff';
   const alignH = s.textAlignH || 'center';
@@ -425,9 +429,9 @@ function drawLineStats(
 
   ctx.save();
   ctx.setLineDash([]);
-  ctx.font = '600 10.5px "JetBrains Mono", monospace';
-  const tw = Math.max(...rows.map((r) => ctx.measureText(r).width)) + 16;
-  const th = rows.length * 16 + 8;
+  ctx.font = `400 11px ${TV_FONT_STACK}`;
+  const tw = Math.max(...rows.map((r) => ctx.measureText(r).width)) + 14;
+  const th = rows.length * 15 + 8;
 
   const pos = s.statsPosition || 'right';
   const anchor =
@@ -441,20 +445,26 @@ function drawLineStats(
       ? a
       : b;
 
-  const bx = Math.min(bridge.width - tw - 72, Math.max(8, anchor.x + (pos === 'right' ? 10 : pos === 'left' ? -tw - 10 : -tw / 2)));
-  const by = Math.min(bridge.height - th - 36, Math.max(8, anchor.y - th / 2));
+  const bx = Math.round(
+    Math.min(
+      bridge.width - tw - 72,
+      Math.max(8, anchor.x + (pos === 'right' ? 10 : pos === 'left' ? -tw - 10 : -tw / 2))
+    )
+  );
+  const by = Math.round(Math.min(bridge.height - th - 36, Math.max(8, anchor.y - th / 2)));
 
   ctx.fillStyle = 'rgba(19, 23, 34, 0.9)';
-  drawRoundedRect(ctx, bx, by, tw, th, 4);
+  drawRoundedRect(ctx, bx, by, Math.round(tw), th, 4);
   ctx.fill();
   ctx.strokeStyle = s.color || '#2962ff';
   ctx.lineWidth = 1;
   ctx.stroke();
 
   ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
   rows.forEach((r, idx) => {
-    ctx.fillStyle = idx === 0 ? '#ffffff' : '#a3a8b8';
-    ctx.fillText(r, bx + 8, by + 15 + idx * 15);
+    ctx.fillStyle = idx === 0 ? '#ffffff' : '#b2b5be';
+    ctx.fillText(r, bx + 7, by + 11.5 + idx * 15);
   });
   ctx.restore();
 }
@@ -738,7 +748,7 @@ export function renderDrawingObject(
       ctx.setLineDash([]);
       const d = new Date(s.time * 1000);
       const lbl = `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
-      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.font = `400 10.5px ${TV_FONT_STACK}`;
       const tw = ctx.measureText(lbl).width + 12;
       ctx.fillStyle = color;
       ctx.fillRect(x - tw / 2, height - 46, tw, 18);
@@ -771,7 +781,7 @@ export function renderDrawingObject(
       ctx.setLineDash([]);
       if (s.showPriceLabels !== false) {
         const lbl = fmtPrice(s.p1.price);
-        ctx.font = '600 10px "JetBrains Mono", monospace';
+        ctx.font = `400 10.5px ${TV_FONT_STACK}`;
         const tw = ctx.measureText(lbl).width + 12;
         ctx.fillStyle = color;
         ctx.fillRect(width - tw - 66, a.y - 9, tw, 18);
@@ -876,7 +886,7 @@ export function renderDrawingObject(
 
       const deg = (-Math.atan2(b.y - a.y, Math.abs(b.x - a.x)) * 180) / Math.PI;
       ctx.fillStyle = color;
-      ctx.font = '700 11px "JetBrains Mono", monospace';
+      ctx.font = `500 11px ${TV_FONT_STACK}`;
       ctx.textAlign = dir === 1 ? 'left' : 'right';
       ctx.fillText(
         `${deg >= 0 ? '+' : ''}${deg.toFixed(1)}°`,
@@ -1111,7 +1121,7 @@ export function renderDrawingObject(
         ctx.stroke();
 
         ctx.fillStyle = lvl.color;
-        ctx.font = '600 10px "JetBrains Mono", monospace';
+        ctx.font = `400 10.5px ${TV_FONT_STACK}`;
         ctx.textAlign = 'left';
         ctx.fillText(`${lvl.label} (${fmtPrice(price)})`, leftX + 4, y - 3);
       });
@@ -1156,7 +1166,7 @@ export function renderDrawingObject(
         ctx.lineTo(rightX, y);
         ctx.stroke();
         ctx.fillStyle = lvl.color;
-        ctx.font = '600 10px "JetBrains Mono", monospace';
+        ctx.font = `400 10.5px ${TV_FONT_STACK}`;
         ctx.textAlign = 'left';
         ctx.fillText(`${lvl.label} (${fmtPrice(price)})`, leftX + 4, y - 3);
       });
@@ -1180,48 +1190,53 @@ export function renderDrawingObject(
       const target = s.targetPrice ?? (isLong ? entry * 1.04 : entry * 0.96);
       const stop = s.stopPrice ?? (isLong ? entry * 0.98 : entry * 1.02);
 
-      const ty = bridge.priceToY(target);
-      const sy = bridge.priceToY(stop);
-      if (ty === null || sy === null) break;
+      const tyRaw = bridge.priceToY(target);
+      const syRaw = bridge.priceToY(stop);
+      if (tyRaw === null || syRaw === null) break;
 
-      const x1 = Math.min(a.x, b.x);
-      const x2 = Math.max(a.x, b.x, x1 + 60);
+      // Snap to crisp pixel boundaries for native TradingView sharpness
+      const x1 = Math.round(Math.min(a.x, b.x));
+      const x2 = Math.round(Math.max(a.x, b.x, x1 + 60));
       const boxW = x2 - x1;
+      const ay = Math.round(a.y);
+      const ty = Math.round(tyRaw);
+      const sy = Math.round(syRaw);
 
       const targetFill = s.targetColor || 'rgba(8, 153, 129, 0.2)';
       const stopFill = s.stopColor || 'rgba(242, 54, 69, 0.2)';
       const lineCol = s.color || '#787b86';
 
-      // Clean translucent Target & Stop zones (no heavy box borders — matches TradingView!)
+      // Clean translucent Target & Stop zones (no heavy borders)
       ctx.fillStyle = targetFill;
-      ctx.fillRect(x1, Math.min(a.y, ty), boxW, Math.abs(ty - a.y));
+      ctx.fillRect(x1, Math.min(ay, ty), boxW, Math.abs(ty - ay));
 
-      // Subtle outer target accent hairline
+      // Subtle outer target accent hairline (pixel-snapped)
       ctx.save();
       ctx.setLineDash([]);
-      ctx.strokeStyle = hexWithOpacity(targetFill, 1).replace(/,\s*[\d.]+\)$/, ', 0.45)');
+      ctx.strokeStyle = hexWithOpacity(targetFill, 1).replace(/,\s*[\d.]+\)$/, ', 0.42)');
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x1, ty);
-      ctx.lineTo(x2, ty);
+      ctx.moveTo(x1, ty + 0.5);
+      ctx.lineTo(x2, ty + 0.5);
       ctx.stroke();
       ctx.restore();
 
       ctx.fillStyle = stopFill;
-      ctx.fillRect(x1, Math.min(a.y, sy), boxW, Math.abs(sy - a.y));
+      ctx.fillRect(x1, Math.min(ay, sy), boxW, Math.abs(sy - ay));
 
-      // Crisp Entry divider line
+      // Crisp pixel-snapped Entry divider line
       ctx.save();
       ctx.strokeStyle = lineCol;
       ctx.lineWidth = s.lineWidth || 1;
       applyLineDash(ctx, s.lineStyle);
+      const entryLineY = (s.lineWidth || 1) % 2 === 1 ? ay + 0.5 : ay;
       ctx.beginPath();
-      ctx.moveTo(x1, a.y);
-      ctx.lineTo(x2, a.y);
+      ctx.moveTo(x1, entryLineY);
+      ctx.lineTo(x2, entryLineY);
       ctx.stroke();
       ctx.restore();
 
-      // Stats pills: ONLY show when selected, hovered, or Always Show Stats is enabled (and statsMode !== 'hidden')
+      // Stats pills: ONLY show when selected, hovered, or Always Show Stats is enabled
       const statsMode = s.statsMode || 'all';
       const showStats = statsMode !== 'hidden' && (showHandles || Boolean(s.alwaysShowStats));
 
@@ -1260,10 +1275,9 @@ export function renderDrawingObject(
         const liveClose = bridge.lastClose ?? entry;
         const openPnl = (isLong ? liveClose - entry : entry - liveClose) * rawQty * lotSize;
 
-        const fmtAmt = (n: number) =>
-          Math.abs(n) >= 1000
-            ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-            : Number(n.toFixed(2)).toString();
+        // Match exact TradingView number formatting (e.g., 1474.08, 750, 1.9)
+        const fmtAmt = (n: number) => Number(n.toFixed(2)).toString();
+        const fmtRR = (n: number) => Number(n.toFixed(2)).toString();
         const fmtPnl = (n: number) => {
           const absFmt = Math.abs(n).toLocaleString('en-US', {
             minimumFractionDigits: 2,
@@ -1272,28 +1286,31 @@ export function renderDrawingObject(
           return n < 0 ? `−${absFmt}` : absFmt;
         };
 
-        const fontSize = s.fontSize || 12;
+        // Sleek regular-weight TradingView typography (delicate, crisp, never bloated/chunky)
+        const userFontSize = s.fontSize || 12;
+        const renderFs = Math.max(9.5, userFontSize - 1);
         const textCol = s.textColor || '#ffffff';
         const compact = Boolean(s.compactStatsMode);
         const cx = x1 + boxW / 2;
 
         ctx.save();
         ctx.setLineDash([]);
-        ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
+        ctx.font = `400 ${renderFs}px ${TV_FONT_STACK}`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
-        const pillH = Math.round(fontSize * 1.85);
-        const padX = compact ? 8 : 10;
+        const pillH = Math.round(renderFs * 1.72); // ~19px at default 12 setting
+        const padX = compact ? 6 : 7;
 
         const drawPill = (label: string, centerX: number, topY: number, bg: string) => {
-          const tw = ctx.measureText(label).width + padX * 2;
-          const clampedX = Math.max(6, Math.min(width - tw - 6, centerX - tw / 2));
+          const tw = Math.ceil(ctx.measureText(label).width + padX * 2);
+          const clampedX = Math.round(Math.max(6, Math.min(width - tw - 6, centerX - tw / 2)));
+          const py = Math.round(topY);
           ctx.fillStyle = bg;
-          drawRoundedRect(ctx, clampedX, topY, tw, pillH, 4);
+          drawRoundedRect(ctx, clampedX, py, tw, pillH, 3);
           ctx.fill();
           ctx.fillStyle = textCol;
-          ctx.fillText(label, clampedX + tw / 2, topY + pillH / 2 + 0.5);
+          ctx.fillText(label, clampedX + tw / 2, py + pillH / 2 + 0.5);
         };
 
         // 1. Target Pill (above Target zone for Long, below Target zone for Short)
@@ -1301,7 +1318,7 @@ export function renderDrawingObject(
           const tpLabel = compact
             ? `Target: ${fmtPrice(reward)} (${tpPct.toFixed(2)}%)`
             : `Target: ${fmtPrice(reward)} (${tpPct.toFixed(3)}%) ${tpTicks.toLocaleString('en-US')}, Amount: ${fmtAmt(targetAmount)}`;
-          const tpPillY = isLong ? ty - pillH - 12 : ty + 12;
+          const tpPillY = isLong ? ty - pillH - 9 : ty + 9;
           drawPill(tpLabel, cx, tpPillY, '#089981');
         }
 
@@ -1310,31 +1327,38 @@ export function renderDrawingObject(
           const slLabel = compact
             ? `Stop: ${fmtPrice(riskDist)} (${slPct.toFixed(2)}%)`
             : `Stop: ${fmtPrice(riskDist)} (${slPct.toFixed(3)}%) ${slTicks.toLocaleString('en-US')}, Amount: ${fmtAmt(stopAmount)}`;
-          const slPillY = isLong ? sy + 12 : sy - pillH - 12;
+          const slPillY = isLong ? sy + 9 : sy - pillH - 9;
           drawPill(slLabel, cx, slPillY, '#f23645');
         }
 
-        // 3. Center Open PnL & Risk/Reward Pill (centered above entry line for Long, below for Short)
+        // 3. Center Open PnL & Risk/Reward Pill (compact + crisp 1px white outline — exact TradingView!)
         if (statsMode === 'all' || statsMode === 'percent') {
           const pnlBg = openPnl >= 0 ? '#089981' : '#f23645';
           if (compact) {
-            const cLabel = `R/R: ${rr.toFixed(2)}, Qty: ${qtyStr}`;
-            const cTop = isLong ? a.y - pillH - 8 : a.y + 8;
+            const cLabel = `R/R: ${fmtRR(rr)}, Qty: ${qtyStr}`;
+            const cTop = isLong ? ay - pillH - 6 : ay + 6;
             drawPill(cLabel, cx, cTop, pnlBg);
           } else {
             const line1 = `Open PnL: ${fmtPnl(openPnl)}, Qty: ${qtyStr}`;
-            const line2 = `Risk/reward ratio: ${rr.toFixed(2)}`;
-            const lineH = Math.round(fontSize * 1.38);
-            const tw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 18;
-            const th = lineH * 2 + 10;
-            const clampedX = Math.max(6, Math.min(width - tw - 6, cx - tw / 2));
-            const boxTop = isLong ? a.y - th - 10 : a.y + 10;
+            const line2 = `Risk/reward ratio: ${fmtRR(rr)}`;
+            const lineH = Math.round(renderFs * 1.32); // ~14.5px tight spacing
+            const padY = 4;
+            const tw = Math.ceil(
+              Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 14
+            );
+            const th = lineH * 2 + padY * 2;
+            const clampedX = Math.round(Math.max(6, Math.min(width - tw - 6, cx - tw / 2)));
+            const boxTop = Math.round(isLong ? ay - th - 7 : ay + 7);
             ctx.fillStyle = pnlBg;
-            drawRoundedRect(ctx, clampedX, boxTop, tw, th, 5);
+            drawRoundedRect(ctx, clampedX, boxTop, tw, th, 4);
             ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+            ctx.lineWidth = 1;
+            drawRoundedRect(ctx, clampedX + 0.5, boxTop + 0.5, tw - 1, th - 1, 4);
+            ctx.stroke();
             ctx.fillStyle = textCol;
-            ctx.fillText(line1, clampedX + tw / 2, boxTop + 5 + lineH * 0.5);
-            ctx.fillText(line2, clampedX + tw / 2, boxTop + 5 + lineH * 1.5);
+            ctx.fillText(line1, clampedX + tw / 2, boxTop + padY + lineH * 0.5 + 0.5);
+            ctx.fillText(line2, clampedX + tw / 2, boxTop + padY + lineH * 1.5 + 0.5);
           }
         }
 
@@ -1342,22 +1366,22 @@ export function renderDrawingObject(
       }
 
       if (showHandles) {
-        // TradingView crisp blue-ringed white rounded-square handles at the 4 corners/anchors
-        const drawPosHandle = (hx: number, hy: number) => {
+        // Exact TradingView handles: Entry left (p1) is a CIRCLE; Target, Stop, and Width (p2) are ROUNDED SQUARES!
+        const drawPosSquare = (hx: number, hy: number) => {
           ctx.save();
           ctx.setLineDash([]);
           ctx.fillStyle = '#ffffff';
           ctx.strokeStyle = '#2962ff';
-          ctx.lineWidth = isSelected ? 2 : 1.7;
-          drawRoundedRect(ctx, hx - 4.5, hy - 4.5, 9, 9, 2.5);
+          ctx.lineWidth = isSelected ? 1.8 : 1.5;
+          drawRoundedRect(ctx, Math.round(hx) - 4, Math.round(hy) - 4, 8, 8, 2);
           ctx.fill();
           ctx.stroke();
           ctx.restore();
         };
-        drawPosHandle(x1, ty);
-        drawPosHandle(x1, a.y);
-        drawPosHandle(x2, a.y);
-        drawPosHandle(x1, sy);
+        drawPosSquare(x1, ty);
+        drawHandleDot(ctx, x1, ay, isSelected);
+        drawPosSquare(x2, ay);
+        drawPosSquare(x1, sy);
       }
       break;
     }
@@ -1479,10 +1503,10 @@ export function renderDrawingObject(
       if (!a) break;
       const lines = (s.text || 'Note').split('\n');
       const fs = s.fontSize || 13;
-      const weight = s.fontBold ? '700' : '600';
+      const weight = s.fontBold ? '700' : '400';
       const italic = s.fontItalic ? 'italic ' : '';
       ctx.setLineDash([]);
-      ctx.font = `${italic}${weight} ${fs}px "Plus Jakarta Sans", sans-serif`;
+      ctx.font = `${italic}${weight} ${fs}px ${TV_FONT_STACK}`;
       const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 16;
       const lh = fs * 1.3;
       const th = lines.length * lh + 10;
@@ -1512,7 +1536,7 @@ export function renderDrawingObject(
       ctx.lineTo(b.x, b.y);
       ctx.stroke();
 
-      ctx.font = `${s.fontItalic ? 'italic ' : ''}${s.fontBold ? '700' : '600'} ${fs}px "Plus Jakarta Sans", sans-serif`;
+      ctx.font = `${s.fontItalic ? 'italic ' : ''}${s.fontBold ? '700' : '400'} ${fs}px ${TV_FONT_STACK}`;
       const tw = ctx.measureText(txt).width + 18;
       ctx.fillStyle = color;
       drawRoundedRect(ctx, b.x - tw / 2, b.y - 14, tw, fs + 14, 5);
@@ -1534,7 +1558,7 @@ export function renderDrawingObject(
       if (!a) break;
       const lbl = fmtPrice(s.p1.price);
       ctx.setLineDash([]);
-      ctx.font = '700 11px "JetBrains Mono", monospace';
+      ctx.font = `500 11px ${TV_FONT_STACK}`;
       const tw = ctx.measureText(lbl).width + 16;
       const h = 22;
       ctx.fillStyle = color;
@@ -1594,9 +1618,9 @@ export function renderDrawingObject(
           : `${up ? '+' : ''}${fmtPrice(diff)} (${up ? '+' : ''}${pct.toFixed(2)}%) · ${bars} bars (${dur})`;
 
       ctx.setLineDash([]);
-      ctx.font = '600 11px "JetBrains Mono", monospace';
-      const tw = ctx.measureText(label).width + 16;
-      const boxY = Math.max(8, Math.min(height - 34, Math.max(a.y, b.y) + 8));
+      ctx.font = `400 11px ${TV_FONT_STACK}`;
+      const tw = Math.ceil(ctx.measureText(label).width + 14);
+      const boxY = Math.round(Math.max(8, Math.min(height - 34, Math.max(a.y, b.y) + 8)));
       ctx.fillStyle = boxCol;
       drawRoundedRect(ctx, mx - tw / 2, boxY, tw, 22, 4);
       ctx.fill();

@@ -551,8 +551,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       if (!chart || !series || !canvas) return null;
       const placement = chartSettingsRef.current.scales.scalesPlacement;
       const scaleW = chart.priceScale(placement).width() || 70;
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const cssW = canvas.clientWidth || Math.round(canvas.width / dpr);
+      const cssH = canvas.clientHeight || Math.round(canvas.height / dpr);
       const plotLeft = placement === 'left' ? scaleW : 0;
-      const plotWidth = Math.max(0, canvas.width - scaleW);
+      const plotWidth = Math.max(0, cssW - scaleW);
       return {
         ptToScreen: (pt: AnchorPoint) => {
           const logical = timeToLogical(pt.time);
@@ -573,8 +576,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           return x === null ? null : Number(x);
         },
         timeToLogical,
-        width: canvas.width,
-        height: canvas.height,
+        width: cssW,
+        height: cssH,
         plotLeft,
         plotWidth,
         intervalSec: INTERVAL_SECONDS[intervalRef.current] || 86400,
@@ -620,7 +623,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const cssW = canvas.clientWidth || Math.round(canvas.width / dpr);
+      const cssH = canvas.clientHeight || Math.round(canvas.height / dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
 
       const ts = chart.timeScale();
       const range = ts.getVisibleLogicalRange();
@@ -650,7 +657,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             if (x !== null) {
               ctx.beginPath();
               ctx.moveTo(Number(x), 0);
-              ctx.lineTo(Number(x), canvas.height);
+              ctx.lineTo(Number(x), cssH);
               ctx.stroke();
             }
           }
@@ -725,17 +732,23 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       if (!ctx) return;
       const underCtx = underCanvas ? underCanvas.getContext('2d') : null;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const cssW = bridge.width;
+      const cssH = bridge.height;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, cssW, cssH);
       if (underCanvas && underCtx) {
-        underCtx.clearRect(0, 0, underCanvas.width, underCanvas.height);
+        underCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        underCtx.clearRect(0, 0, cssW, cssH);
       }
 
       const chart = chartRef.current;
       const placement = chartSettingsRef.current.scales.scalesPlacement;
       const scaleW = chart ? chart.priceScale(placement).width() : 70;
       const plotLeft = placement === 'left' ? scaleW : 0;
-      const plotWidth = Math.max(0, canvas.width - scaleW);
-      const plotHeight = Math.max(0, canvas.height - 26);
+      const plotWidth = Math.max(0, cssW - scaleW);
+      const plotHeight = Math.max(0, cssH - 26);
 
       if (!drawingsHiddenRef.current) {
         ctx.save();
@@ -901,7 +914,9 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           ? getPrecision(lastBar.close)
           : parseInt(symCfg.precision, 10);
 
-      const maxBottom = Math.max(40, canvas.height - 27);
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const cssH = canvas.clientHeight || Math.round(canvas.height / dpr);
+      const maxBottom = Math.max(40, cssH - 27);
       const pillH = 18;
       const halfPill = 9;
 
@@ -1471,18 +1486,21 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         for (const entry of entries) {
           const { width, height } = entry.contentRect;
           if (width <= 0 || height <= 0) continue;
+          const dpr = Math.max(1, window.devicePixelRatio || 1);
+          const physW = Math.round(width * dpr);
+          const physH = Math.round(height * dpr);
           chart.applyOptions({ width, height });
           if (cloudCanvasRef.current) {
-            cloudCanvasRef.current.width = width;
-            cloudCanvasRef.current.height = height;
+            cloudCanvasRef.current.width = physW;
+            cloudCanvasRef.current.height = physH;
           }
           if (underDrawCanvasRef.current) {
-            underDrawCanvasRef.current.width = width;
-            underDrawCanvasRef.current.height = height;
+            underDrawCanvasRef.current.width = physW;
+            underDrawCanvasRef.current.height = physH;
           }
           if (drawCanvasRef.current) {
-            drawCanvasRef.current.width = width;
-            drawCanvasRef.current.height = height;
+            drawCanvasRef.current.width = physW;
+            drawCanvasRef.current.height = physH;
           }
           drawEmaCloud();
           redrawOverlay();
