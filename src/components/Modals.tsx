@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, Bell, Plus, Check, RotateCcw } from 'lucide-react';
-import { IndicatorConfig, TickerData, WatchlistItem } from '../types/trading';
+import { Search, X, Bell, Plus, Check, RotateCcw, Settings } from 'lucide-react';
+import {
+  IndicatorConfig,
+  IndicatorSettingsTarget,
+  TickerData,
+  WatchlistItem,
+} from '../types/trading';
 import { fetchBinance, fmtCompact, fmtPrice } from '../utils/binance';
 import { DEFAULT_INDICATORS } from '../utils/storage';
 import { CoinLogo } from './CoinLogo';
@@ -182,6 +187,7 @@ interface IndicatorsModalProps {
   onClose: () => void;
   config: IndicatorConfig;
   onChange: (next: IndicatorConfig) => void;
+  onOpenIndicatorSettings?: (target: IndicatorSettingsTarget) => void;
 }
 
 export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
@@ -189,6 +195,7 @@ export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
   onClose,
   config,
   onChange,
+  onOpenIndicatorSettings,
 }) => {
   if (!open) return null;
 
@@ -232,140 +239,93 @@ export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
         </div>
 
         <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto text-xs">
-          {/* EMA Fast */}
-          <div className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
+          {/* SMA/EMA Bundle */}
+          <div className="flex items-center justify-between py-2 border-b border-[var(--border)]">
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
-                checked={config.emaFast.enabled}
-                onChange={(e) => update('emaFast', { enabled: e.target.checked })}
-                className="accent-[var(--accent)] w-4 h-4"
-              />
-              <span
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: config.emaFast.color }}
-              />
-              <span className="font-semibold text-[var(--text-main)]">EMA Fast</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-[var(--text-muted)]">Length</span>
-              <input
-                type="number"
-                min={2}
-                max={500}
-                value={config.emaFast.period}
+                checked={config.smaEma.enabled}
                 onChange={(e) =>
-                  update('emaFast', { period: Math.max(2, parseInt(e.target.value, 10) || 9) })
+                  update('smaEma', {
+                    enabled: e.target.checked,
+                    ...(e.target.checked ? { hidden: false } : {}),
+                  })
                 }
-                className="w-16 h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num"
-              />
-            </div>
-          </div>
-
-          {/* EMA Slow */}
-          <div className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config.emaSlow.enabled}
-                onChange={(e) => update('emaSlow', { enabled: e.target.checked })}
                 className="accent-[var(--accent)] w-4 h-4"
               />
-              <span
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: config.emaSlow.color }}
-              />
-              <span className="font-semibold text-[var(--text-main)]">EMA Slow</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-[var(--text-muted)]">Length</span>
-              <input
-                type="number"
-                min={2}
-                max={500}
-                value={config.emaSlow.period}
-                onChange={(e) =>
-                  update('emaSlow', { period: Math.max(2, parseInt(e.target.value, 10) || 21) })
-                }
-                className="w-16 h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num"
-              />
-            </div>
-          </div>
-
-          {/* EMA Cloud */}
-          <div className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config.emaCloud.enabled}
-                onChange={(e) => update('emaCloud', { enabled: e.target.checked })}
-                className="accent-[var(--accent)] w-4 h-4"
-              />
-              <span className="font-semibold text-[var(--text-main)]">
-                EMA Ribbon Cloud Fill (Fast / Slow)
+              <span className="inline-flex items-center gap-1">
+                <span
+                  className="w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: config.smaEma.ema1.color }}
+                />
+                <span
+                  className="w-2.5 h-2.5 rounded-full -ml-1.5 ring-1 ring-[var(--bg-surface)]"
+                  style={{ backgroundColor: config.smaEma.ema2.color }}
+                />
               </span>
+              <div>
+                <div className="font-semibold text-[var(--text-main)]">SMA / EMA (3×SMA + 3×EMA)</div>
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  EMA {config.smaEma.ema1.period}/{config.smaEma.ema2.period}, SMA {config.smaEma.sma1.period}/{config.smaEma.sma2.period}/{config.smaEma.sma3.period} &amp; ribbon fill
+                </div>
+              </div>
             </label>
-            <span className="text-[11px] text-[var(--text-muted)]">Shaded trend zone</span>
+            {onOpenIndicatorSettings && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenIndicatorSettings('smaEma');
+                }}
+                title="SMA/EMA Settings"
+                className="h-7 px-2.5 rounded border border-[var(--border)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-main)] inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                Settings
+              </button>
+            )}
           </div>
 
-          {/* EMA 50 */}
-          <div className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
+          {/* Volume + MA */}
+          <div className="flex items-center justify-between py-2 border-b border-[var(--border)]">
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
-                checked={config.ema50.enabled}
-                onChange={(e) => update('ema50', { enabled: e.target.checked })}
+                checked={config.volume.enabled}
+                onChange={(e) =>
+                  update('volume', {
+                    enabled: e.target.checked,
+                    ...(e.target.checked ? { hidden: false } : {}),
+                  })
+                }
                 className="accent-[var(--accent)] w-4 h-4"
               />
               <span
                 className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: config.ema50.color }}
+                style={{ backgroundColor: config.volume.maColor }}
               />
-              <span className="font-semibold text-[var(--text-main)]">EMA Medium</span>
+              <div>
+                <div className="font-semibold text-[var(--text-main)]">Volume &amp; Volume MA</div>
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  MA Length {config.volume.maPeriod}
+                  {config.volume.colorBasedOnPrevClose ? ' · Prev close color' : ''}
+                </div>
+              </div>
             </label>
-            <div className="flex items-center gap-2">
-              <span className="text-[var(--text-muted)]">Length</span>
-              <input
-                type="number"
-                min={2}
-                max={500}
-                value={config.ema50.period}
-                onChange={(e) =>
-                  update('ema50', { period: Math.max(2, parseInt(e.target.value, 10) || 50) })
-                }
-                className="w-16 h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num"
-              />
-            </div>
-          </div>
-
-          {/* EMA 200 */}
-          <div className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config.ema200.enabled}
-                onChange={(e) => update('ema200', { enabled: e.target.checked })}
-                className="accent-[var(--accent)] w-4 h-4"
-              />
-              <span
-                className="w-2.5 h-2.5 rounded-full"
-                style={{ backgroundColor: config.ema200.color }}
-              />
-              <span className="font-semibold text-[var(--text-main)]">EMA Trend Filter</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="text-[var(--text-muted)]">Length</span>
-              <input
-                type="number"
-                min={2}
-                max={500}
-                value={config.ema200.period}
-                onChange={(e) =>
-                  update('ema200', { period: Math.max(2, parseInt(e.target.value, 10) || 200) })
-                }
-                className="w-16 h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num"
-              />
-            </div>
+            {onOpenIndicatorSettings && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenIndicatorSettings('volume');
+                }}
+                title="Volume Settings"
+                className="h-7 px-2.5 rounded border border-[var(--border)] bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-[var(--text-main)] inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                Settings
+              </button>
+            )}
           </div>
 
           {/* Bollinger Bands */}
@@ -374,7 +334,12 @@ export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
               <input
                 type="checkbox"
                 checked={config.bb.enabled}
-                onChange={(e) => update('bb', { enabled: e.target.checked })}
+                onChange={(e) =>
+                  update('bb', {
+                    enabled: e.target.checked,
+                    ...(e.target.checked ? { hidden: false } : {}),
+                  })
+                }
                 className="accent-[var(--accent)] w-4 h-4"
               />
               <span
@@ -410,47 +375,18 @@ export const IndicatorsModal: React.FC<IndicatorsModalProps> = ({
             </div>
           </div>
 
-          {/* Volume + MA */}
-          <div className="flex items-center justify-between py-1.5 border-b border-[var(--border)]">
-            <label className="flex items-center gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={config.volume.enabled}
-                onChange={(e) => update('volume', { enabled: e.target.checked })}
-                className="accent-[var(--accent)] w-4 h-4"
-              />
-              <span className="font-semibold text-[var(--text-main)]">Volume & MA</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-[var(--text-muted)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={config.volume.showMa}
-                  onChange={(e) => update('volume', { showMa: e.target.checked })}
-                  className="accent-[var(--accent)]"
-                />
-                MA
-              </label>
-              <input
-                type="number"
-                min={2}
-                max={200}
-                value={config.volume.maPeriod}
-                onChange={(e) =>
-                  update('volume', { maPeriod: Math.max(2, parseInt(e.target.value, 10) || 20) })
-                }
-                className="w-14 h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num"
-              />
-            </div>
-          </div>
-
           {/* RSI Oscillator Sub-Pane */}
           <div className="flex items-center justify-between py-1.5">
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input
                 type="checkbox"
                 checked={config.rsi.enabled}
-                onChange={(e) => update('rsi', { enabled: e.target.checked })}
+                onChange={(e) =>
+                  update('rsi', {
+                    enabled: e.target.checked,
+                    ...(e.target.checked ? { hidden: false } : {}),
+                  })
+                }
                 className="accent-[var(--accent)] w-4 h-4"
               />
               <span

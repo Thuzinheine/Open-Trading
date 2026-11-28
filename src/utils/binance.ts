@@ -1,4 +1,11 @@
-import { CandleBar, LinePoint, Timeframe, VolumeBar, WatchlistItem } from '../types/trading';
+import {
+  CandleBar,
+  LinePoint,
+  PriceSource,
+  Timeframe,
+  VolumeBar,
+  WatchlistItem,
+} from '../types/trading';
 
 export const REST_MIRRORS = [
   'https://data-api.binance.vision/api/v3',
@@ -288,14 +295,59 @@ export function toHeikinAshi(candles: CandleBar[]): CandleBar[] {
   return result;
 }
 
-export function computeEMA(data: CandleBar[], period: number): LinePoint[] {
+export function getCandleSourceValue(c: CandleBar, source: PriceSource = 'close'): number {
+  switch (source) {
+    case 'open':
+      return c.open;
+    case 'high':
+      return c.high;
+    case 'low':
+      return c.low;
+    case 'hl2':
+      return (c.high + c.low) / 2;
+    case 'hlc3':
+      return (c.high + c.low + c.close) / 3;
+    case 'ohlc4':
+      return (c.open + c.high + c.low + c.close) / 4;
+    case 'close':
+    default:
+      return c.close;
+  }
+}
+
+export function computeEMA(
+  data: CandleBar[],
+  period: number,
+  source: PriceSource = 'close'
+): LinePoint[] {
   if (!data.length || period < 1) return [];
   const k = 2 / (period + 1);
-  let ema = data[0].close;
-  return data.map((d) => {
-    ema = d.close * k + ema * (1 - k);
+  let ema = getCandleSourceValue(data[0], source);
+  return data.map((d, idx) => {
+    const val = getCandleSourceValue(d, source);
+    if (idx > 0) {
+      ema = val * k + ema * (1 - k);
+    }
     return { time: d.time, value: ema };
   });
+}
+
+export function computeSMA(
+  data: CandleBar[],
+  period: number,
+  source: PriceSource = 'close'
+): LinePoint[] {
+  if (!data.length || period < 1) return [];
+  const res: LinePoint[] = [];
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) {
+    sum += getCandleSourceValue(data[i], source);
+    if (i >= period) sum -= getCandleSourceValue(data[i - period], source);
+    if (i >= period - 1) {
+      res.push({ time: data[i].time, value: sum / period });
+    }
+  }
+  return res;
 }
 
 export function computeVolumeSMA(vols: VolumeBar[], period: number): LinePoint[] {

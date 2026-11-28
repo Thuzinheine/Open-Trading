@@ -10,6 +10,7 @@ import {
   DrawingTemplate,
   DrawingTool,
   IndicatorConfig,
+  IndicatorSettingsTarget,
   MagnetMode,
   PaperAccountState,
   PriceAlert,
@@ -40,6 +41,7 @@ import {
   loadDrawingTemplates,
   loadFavoriteTools,
   loadIndicators,
+  loadLastChartState,
   loadPaperAccount,
   loadSymbolNotes,
   loadTheme,
@@ -54,6 +56,7 @@ import {
   saveDrawingTemplates,
   saveFavoriteTools,
   saveIndicators,
+  saveLastChartState,
   savePaperAccount,
   saveSymbolNotes,
   saveTheme,
@@ -70,6 +73,7 @@ import { TradeDrawer } from './components/TradeDrawer';
 import { CreateAlertModal, IndicatorsModal, SymbolSearchModal } from './components/Modals';
 import { DrawingSettingsModal, SettingsTab } from './components/DrawingSettingsModal';
 import { ChartSettingsModal } from './components/ChartSettingsModal';
+import { IndicatorSettingsModal } from './components/IndicatorSettingsModal';
 import { FLAG_COLORS } from './components/CoinLogo';
 
 interface RawTicker24h {
@@ -128,12 +132,13 @@ export default function App() {
   );
   const [lockDrawings, setLockDrawings] = useState<boolean>(initialToolPrefs.lockDrawings);
 
-  // Chart state
-  const [currentSymbol, setCurrentSymbol] = useState<string>('BTCUSDT');
-  const [interval, setIntervalState] = useState<Timeframe>('1d');
+  // Chart state (restores last opened coin & timeframe)
+  const initialChart = useMemo(() => loadLastChartState(), []);
+  const [currentSymbol, setCurrentSymbol] = useState<string>(initialChart.symbol);
+  const [interval, setIntervalState] = useState<Timeframe>(initialChart.interval);
   const [chartDataMeta, setChartDataMeta] = useState<{ sym: string; tf: Timeframe }>({
-    sym: 'BTCUSDT',
-    tf: '1d',
+    sym: initialChart.symbol,
+    tf: initialChart.interval,
   });
   const [chartType, setChartType] = useState<ChartType>('candles');
   const [candles, setCandles] = useState<CandleBar[]>([]);
@@ -159,6 +164,7 @@ export default function App() {
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
   const [searchOpen, setSearchOpen] = useState<boolean>(false);
   const [indicatorsOpen, setIndicatorsOpen] = useState<boolean>(false);
+  const [indSettingsTarget, setIndSettingsTarget] = useState<IndicatorSettingsTarget | null>(null);
   const [alertModalOpen, setAlertModalOpen] = useState<boolean>(false);
   const [alertPrefill, setAlertPrefill] = useState<{ price?: number; note?: string } | null>(null);
   const [chartSettingsOpen, setChartSettingsOpen] = useState<boolean>(false);
@@ -837,6 +843,7 @@ export default function App() {
 
       setCurrentSymbol(sym);
       setIntervalState(tf);
+      saveLastChartState({ symbol: sym, interval: tf });
       setSelectedDrawingId(null);
       setIsReplayMode(false);
       setIsReplayPlaying(false);
@@ -933,9 +940,12 @@ export default function App() {
 
   // Boot initial chart + gently pre-warm top 5 watchlist coins in background
   useEffect(() => {
-    loadSymbolChart('BTCUSDT', '1d');
+    loadSymbolChart(initialChart.symbol, initialChart.interval);
     const topWarmTimers: number[] = [];
-    const topSyms = watchlist.slice(0, 6).map((w) => w.sym).filter((s) => s !== 'BTCUSDT');
+    const topSyms = watchlist
+      .slice(0, 6)
+      .map((w) => w.sym)
+      .filter((s) => s !== initialChart.symbol);
     topSyms.forEach((sym, idx) => {
       topWarmTimers.push(
         window.setTimeout(() => {
@@ -1277,6 +1287,7 @@ export default function App() {
       if (e.key === 'Escape') {
         setSearchOpen(false);
         setIndicatorsOpen(false);
+        setIndSettingsTarget(null);
         setAlertModalOpen(false);
         setChartSettingsOpen(false);
         setSettingsDrawingId(null);
@@ -1371,9 +1382,11 @@ export default function App() {
 
   const handleUpdateWatchlistItems = useCallback(
     (listId: string, updater: (items: WatchlistItem[]) => WatchlistItem[]) => {
-      setWatchlists((prev) =>
-        prev.map((wl) => (wl.id === listId ? { ...wl, items: updater(wl.items) } : wl))
-      );
+      setWatchlists((prev) => {
+        const next = prev.map((wl) => (wl.id === listId ? { ...wl, items: updater(wl.items) } : wl));
+        saveWatchlistCollections(next);
+        return next;
+      });
     },
     []
   );
@@ -1687,10 +1700,7 @@ export default function App() {
   }, [volumes]);
 
   const activeIndicatorCount = [
-    indicators.emaFast.enabled,
-    indicators.emaSlow.enabled,
-    indicators.ema50.enabled,
-    indicators.ema200.enabled,
+    indicators.smaEma.enabled,
     indicators.bb.enabled,
     indicators.volume.enabled,
     indicators.rsi.enabled,
@@ -1809,6 +1819,7 @@ export default function App() {
             onToggleSymbolFlag={handleToggleCurrentSymbolFlag}
             onUpdateIndicators={setIndicators}
             onOpenIndicators={() => setIndicatorsOpen(true)}
+            onOpenIndicatorSettings={(target) => setIndSettingsTarget(target)}
             candles={candles}
             volumes={volumes}
             candleCloseMs={candleCloseMs}
@@ -1948,6 +1959,18 @@ export default function App() {
         onClose={() => setIndicatorsOpen(false)}
         config={indicators}
         onChange={setIndicators}
+        onOpenIndicatorSettings={(target) => {
+          setIndicatorsOpen(false);
+          setIndSettingsTarget(target);
+        }}
+      />
+
+      <IndicatorSettingsModal
+        open={Boolean(indSettingsTarget)}
+        target={indSettingsTarget}
+        config={indicators}
+        onLiveChange={setIndicators}
+        onClose={() => setIndSettingsTarget(null)}
       />
 
       <CreateAlertModal

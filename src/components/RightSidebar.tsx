@@ -161,7 +161,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
   // Symbol details controls + resizable split ratio & Watchlist column widths
   const [showExtendedDetails, setShowExtendedDetails] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const [watchlistRatio, setWatchlistRatio] = useState<number>(46);
+  const [watchlistRatio, setWatchlistRatio] = useState<number>(() => {
+    try {
+      const saved = Number(localStorage.getItem('tp_watchlist_ratio_v1'));
+      if (Number.isFinite(saved) && saved >= 22 && saved <= 76) return saved;
+    } catch {}
+    return 46;
+  });
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const detailsScrollRef = useRef<HTMLDivElement>(null);
   const technicalsRef = useRef<HTMLDivElement>(null);
@@ -200,6 +206,12 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       localStorage.setItem('tp_watchlist_sidebar_w_v1', String(sidebarWidth));
     } catch {}
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tp_watchlist_ratio_v1', String(watchlistRatio));
+    } catch {}
+  }, [watchlistRatio]);
 
   const handleStartResizeSidebar = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -495,6 +507,7 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
 
   const handleDrop = (e: React.DragEvent, targetSym: string) => {
     e.preventDefault();
+    e.stopPropagation();
     const sourceSym = dragSym || e.dataTransfer.getData('text/plain');
     if (!sourceSym || sourceSym === targetSym || !activeList) {
       setDragSym(null);
@@ -520,6 +533,26 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
       return next;
     });
 
+    setDragSym(null);
+    setDropTarget(null);
+  };
+
+  const handleDropToEnd = (e: React.DragEvent) => {
+    e.preventDefault();
+    const sourceSym = dragSym || e.dataTransfer.getData('text/plain');
+    if (!sourceSym || !activeList) {
+      setDragSym(null);
+      setDropTarget(null);
+      return;
+    }
+    onUpdateWatchlistItems(activeList.id, (prev) => {
+      const srcIdx = prev.findIndex((i) => i.sym === sourceSym);
+      if (srcIdx === -1 || srcIdx === prev.length - 1) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(srcIdx, 1);
+      next.push(moved);
+      return next;
+    });
     setDragSym(null);
     setDropTarget(null);
   };
@@ -1233,6 +1266,10 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               {/* Watchlist Scrollable Rows with Drag & Drop (Resizable upper pane) */}
               <div
                 style={{ flexBasis: `${watchlistRatio}%` }}
+                onDragOver={(e) => {
+                  if (dragSym) e.preventDefault();
+                }}
+                onDrop={handleDropToEnd}
                 className="min-h-[120px] grow-0 shrink-0 overflow-y-auto py-0.5"
               >
                 {displayRows.length === 0 ? (

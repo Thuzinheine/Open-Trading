@@ -58,6 +58,7 @@ import {
   DrawingTemplate,
   DrawingTool,
   IndicatorConfig,
+  IndicatorSettingsTarget,
   LinePoint,
   MagnetMode,
   PaperLimitOrder,
@@ -74,6 +75,7 @@ import {
   computeBollingerBands,
   computeEMA,
   computeRSI,
+  computeSMA,
   computeVolumeSMA,
   fmtCompact,
   fmtPrice,
@@ -84,7 +86,10 @@ import {
 import {
   DEFAULT_VISIBILITY,
   isDrawingVisibleOnTimeframe,
+  isVisibilityActiveOnTimeframe,
   loadSavedZoom,
+  loadSymbolViewports,
+  saveSymbolViewport,
   saveZoomState,
 } from '../utils/storage';
 import {
@@ -123,6 +128,7 @@ interface ChartWorkspaceProps {
   onToggleSymbolFlag?: () => void;
   onUpdateIndicators?: (updater: (prev: IndicatorConfig) => IndicatorConfig) => void;
   onOpenIndicators?: () => void;
+  onOpenIndicatorSettings?: (target: IndicatorSettingsTarget) => void;
   candles: CandleBar[];
   volumes: VolumeBar[];
   candleCloseMs: number;
@@ -207,6 +213,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       onToggleSymbolFlag,
       onUpdateIndicators,
       onOpenIndicators,
+      onOpenIndicatorSettings,
       candles,
       volumes,
       candleCloseMs,
@@ -267,10 +274,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const areaSeriesRef = useRef<ISeriesApi<'Area'> | null>(null);
     const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
     const volMaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-    const emaFastSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-    const emaSlowSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-    const ema50SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-    const ema200SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const sma1SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const sma2SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const sma3SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const ema1SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const ema2SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+    const ema3SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const bbUpperSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const bbMidSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
     const bbLowerSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -279,8 +288,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const priceLinesRef = useRef<IPriceLine[]>([]);
 
     // Cached arrays & zoom persistence refs
-    const emaFastRef = useRef<LinePoint[]>([]);
-    const emaSlowRef = useRef<LinePoint[]>([]);
+    const ema1Ref = useRef<LinePoint[]>([]);
+    const ema2Ref = useRef<LinePoint[]>([]);
     const displayCandlesRef = useRef<CandleBar[]>([]);
     const displayVolumesRef = useRef<VolumeBar[]>([]);
     const prevSymIntervalRef = useRef<string>('');
@@ -298,6 +307,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       length: number;
     } | null>(null);
     const savedZoomRef = useRef<SavedZoomState>(loadSavedZoom());
+    const symbolViewportsRef = useRef<Record<string, SavedZoomState>>(loadSymbolViewports());
     const isApplyingZoomRef = useRef<boolean>(false);
     const zoomSaveTimerRef = useRef<number | null>(null);
 
@@ -378,10 +388,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     } | null>(null);
 
     const [indValues, setIndValues] = useState<{
-      emaFast?: number;
-      emaSlow?: number;
-      ema50?: number;
-      ema200?: number;
+      sma1?: number;
+      sma2?: number;
+      sma3?: number;
+      ema1?: number;
+      ema2?: number;
+      ema3?: number;
       bbUpper?: number;
       bbMid?: number;
       bbLower?: number;
@@ -389,10 +401,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       rsi?: number;
     }>({});
     const indValuesRef = useRef<{
-      emaFast?: number;
-      emaSlow?: number;
-      ema50?: number;
-      ema200?: number;
+      sma1?: number;
+      sma2?: number;
+      sma3?: number;
+      ema1?: number;
+      ema2?: number;
+      ema3?: number;
       bbUpper?: number;
       bbMid?: number;
       bbLower?: number;
@@ -608,14 +622,26 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       }
 
       const cfg = indicatorsRef.current;
-      const fast = emaFastRef.current;
-      const slow = emaSlowRef.current;
-      if (!cfg.emaCloud.enabled || !cfg.emaFast.enabled || !cfg.emaSlow.enabled || fast.length < 2) {
+      const se = cfg.smaEma;
+      const fast = ema1Ref.current;
+      const slow = ema2Ref.current;
+      const seVisible =
+        se.enabled &&
+        !se.hidden &&
+        isVisibilityActiveOnTimeframe(se.visibility, intervalRef.current);
+      if (
+        !seVisible ||
+        !se.plotsBackground ||
+        !se.ema1.enabled ||
+        !se.ema2.enabled ||
+        fast.length < 2 ||
+        slow.length < 2
+      ) {
         return;
       }
 
       const startIdx = Math.max(0, Math.floor(range.from) - 1);
-      const endIdx = Math.min(fast.length - 1, Math.ceil(range.to) + 1);
+      const endIdx = Math.min(fast.length - 1, slow.length - 1, Math.ceil(range.to) + 1);
 
       for (let i = startIdx; i < endIdx; i++) {
         const x1 = ts.timeToCoordinate(fast[i].time as UTCTimestamp);
@@ -637,7 +663,9 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         }
 
         const isBull = fast[i].value >= slow[i].value;
-        ctx.fillStyle = isBull ? 'rgba(41, 98, 255, 0.11)' : 'rgba(242, 54, 69, 0.11)';
+        ctx.fillStyle = isBull
+          ? se.bgColor0 || 'rgba(41, 98, 255, 0.14)'
+          : se.bgColor1 || 'rgba(242, 54, 69, 0.14)';
         ctx.beginPath();
         ctx.moveTo(x1, yf1);
         ctx.lineTo(x2, yf2);
@@ -849,37 +877,73 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           });
         };
 
-        pushInd('ema_fast', ind.emaFast.enabled, vals.emaFast, ind.emaFast.color);
-        pushInd('ema_slow', ind.emaSlow.enabled, vals.emaSlow, ind.emaSlow.color);
-        pushInd('ema_50', ind.ema50.enabled, vals.ema50, ind.ema50.color);
-        pushInd('ema_200', ind.ema200.enabled, vals.ema200, ind.ema200.color);
-        pushInd('bb_upper', ind.bb.enabled, vals.bbUpper, ind.bb.color);
-        pushInd('bb_mid', ind.bb.enabled, vals.bbMid, ind.bb.color);
-        pushInd('bb_lower', ind.bb.enabled, vals.bbLower, ind.bb.color);
+        const tfNow = intervalRef.current;
+        const se = ind.smaEma;
+        const sePrec = se.precision === 'default' ? prec : parseInt(se.precision, 10);
+        const seFmt = (v: number) => fmtPrice(v, sePrec);
+        const seShowScale =
+          se.enabled &&
+          !se.hidden &&
+          se.labelsOnPriceScale &&
+          isVisibilityActiveOnTimeframe(se.visibility, tfNow);
 
-        // Include Volume & Vol MA in the unified collision-free stack (fixes D1 bottom overlap!)
+        if (seShowScale) {
+          pushInd('sma_1', se.sma1.enabled, vals.sma1, se.sma1.color, series, seFmt);
+          pushInd('sma_2', se.sma2.enabled, vals.sma2, se.sma2.color, series, seFmt);
+          pushInd('sma_3', se.sma3.enabled, vals.sma3, se.sma3.color, series, seFmt);
+          pushInd('ema_1', se.ema1.enabled, vals.ema1, se.ema1.color, series, seFmt);
+          pushInd('ema_2', se.ema2.enabled, vals.ema2, se.ema2.color, series, seFmt);
+          pushInd('ema_3', se.ema3.enabled, vals.ema3, se.ema3.color, series, seFmt);
+        }
+
+        const bbShow = ind.bb.enabled && !ind.bb.hidden;
+        pushInd('bb_upper', bbShow, vals.bbUpper, ind.bb.color);
+        pushInd('bb_mid', bbShow, vals.bbMid, ind.bb.color);
+        pushInd('bb_lower', bbShow, vals.bbLower, ind.bb.color);
+
+        // Include Volume & Vol MA in the unified collision-free stack
         const volArr = displayVolumesRef.current;
         const lastVol = volArr.length ? volArr[volArr.length - 1] : null;
-        if (ind.volume.enabled) {
+        const volShowScale =
+          ind.volume.enabled &&
+          !ind.volume.hidden &&
+          ind.volume.labelsOnPriceScale &&
+          isVisibilityActiveOnTimeframe(ind.volume.visibility, tfNow);
+        const volFmt = (v: number) =>
+          ind.volume.precision === 'default'
+            ? fmtCompact(v)
+            : v.toLocaleString('en-US', {
+                minimumFractionDigits: parseInt(ind.volume.precision, 10),
+                maximumFractionDigits: parseInt(ind.volume.precision, 10),
+              });
+        if (volShowScale) {
           if (ind.volume.showMa && vals.volMa !== undefined) {
             pushInd(
               'vol_ma',
               true,
               vals.volMa,
-              '#9c27b0',
+              ind.volume.maColor || '#9c27b0',
               volMaSeriesRef.current,
-              (v) => fmtCompact(v)
+              volFmt
             );
           }
-          if (lastVol && Number.isFinite(lastVol.value)) {
-            const volColor = lastBar.close >= lastBar.open ? '#089981' : '#f23645';
+          if (ind.volume.showVolume && lastVol && Number.isFinite(lastVol.value)) {
+            const isVolUp = ind.volume.colorBasedOnPrevClose
+              ? lastBar.close >= prevBar.close
+              : lastBar.close >= lastBar.open;
+            const rawVolColor = isVolUp
+              ? ind.volume.growingColor || '#089981'
+              : ind.volume.fallingColor || '#f23645';
+            const volColor = rawVolColor.startsWith('rgba(')
+              ? rawVolColor.replace(/,\s*[\d.]+\)$/, ', 1)')
+              : rawVolColor;
             pushInd(
               'vol_last',
               true,
               lastVol.value,
               volColor,
               volumeSeriesRef.current,
-              (v) => fmtCompact(v)
+              volFmt
             );
           }
         }
@@ -1098,28 +1162,42 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lastValueVisible: false,
       });
 
-      const emaFastSeries = chart.addLineSeries({
-        color: '#f23645',
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      const emaSlowSeries = chart.addLineSeries({
-        color: '#2962ff',
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      });
-      const ema50Series = chart.addLineSeries({
-        color: '#f59e0b',
+      const sma1Series = chart.addLineSeries({
+        color: '#4db6ac',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
         visible: false,
       });
-      const ema200Series = chart.addLineSeries({
-        color: '#8b5cf6',
-        lineWidth: 2,
+      const sma2Series = chart.addLineSeries({
+        color: '#f48fb1',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        visible: false,
+      });
+      const sma3Series = chart.addLineSeries({
+        color: '#7986cb',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        visible: false,
+      });
+      const ema1Series = chart.addLineSeries({
+        color: '#f23645',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      const ema2Series = chart.addLineSeries({
+        color: '#1d54d4',
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      const ema3Series = chart.addLineSeries({
+        color: '#81c784',
+        lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
         visible: false,
@@ -1154,10 +1232,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       areaSeriesRef.current = areaSeries;
       volumeSeriesRef.current = volumeSeries;
       volMaSeriesRef.current = volMaSeries;
-      emaFastSeriesRef.current = emaFastSeries;
-      emaSlowSeriesRef.current = emaSlowSeries;
-      ema50SeriesRef.current = ema50Series;
-      ema200SeriesRef.current = ema200Series;
+      sma1SeriesRef.current = sma1Series;
+      sma2SeriesRef.current = sma2Series;
+      sma3SeriesRef.current = sma3Series;
+      ema1SeriesRef.current = ema1Series;
+      ema2SeriesRef.current = ema2Series;
+      ema3SeriesRef.current = ema3Series;
       bbUpperSeriesRef.current = bbUpperSeries;
       bbMidSeriesRef.current = bbMidSeries;
       bbLowerSeriesRef.current = bbLowerSeries;
@@ -1247,21 +1327,32 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         }
         if (range && !isApplyingZoomRef.current && arr.length > 5) {
           const span = range.to - range.from;
-          if (span >= 10 && span <= 1400) {
+          if (span >= 8 && span <= 1500) {
             const lastIdx = arr.length - 1;
             const currentRightOffset = range.to - lastIdx;
-            const nextZoom: SavedZoomState = {
+            const clampedToIdx = Math.max(0, Math.min(lastIdx, Math.round(range.to)));
+            const toTime = range.to <= lastIdx ? arr[clampedToIdx]?.time : undefined;
+            const curKey = `${symbolRef.current}_${intervalRef.current}`;
+            const nextPerSymZoom: SavedZoomState = {
+              visibleBars: span,
+              rightOffset: currentRightOffset,
+              ...(toTime !== undefined ? { toTime } : {}),
+            };
+            symbolViewportsRef.current[curKey] = nextPerSymZoom;
+
+            const nextGlobalZoom: SavedZoomState = {
               visibleBars: span,
               rightOffset:
                 currentRightOffset >= -10 && currentRightOffset <= 80
                   ? currentRightOffset
                   : savedZoomRef.current.rightOffset,
             };
-            savedZoomRef.current = nextZoom;
+            savedZoomRef.current = nextGlobalZoom;
             if (zoomSaveTimerRef.current) window.clearTimeout(zoomSaveTimerRef.current);
             zoomSaveTimerRef.current = window.setTimeout(() => {
               saveZoomState(savedZoomRef.current);
-            }, 150);
+              saveSymbolViewport(curKey, nextPerSymZoom);
+            }, 140);
           }
         }
 
@@ -1347,7 +1438,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
 
     // Initialize / teardown RSI Sub-Pane
     useEffect(() => {
-      if (!indicators.rsi.enabled || !rsiContainerRef.current) {
+      if (!indicators.rsi.enabled || indicators.rsi.hidden || !rsiContainerRef.current) {
         if (rsiChartRef.current) {
           rsiChartRef.current.remove();
           rsiChartRef.current = null;
@@ -1426,7 +1517,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         rsiChartRef.current = null;
         rsiSeriesRef.current = null;
       };
-    }, [indicators.rsi.enabled, indicators.rsi.color, isDarkMode]);
+    }, [indicators.rsi.enabled, indicators.rsi.hidden, indicators.rsi.color, isDarkMode]);
 
     // Sync Theme + ALL Chart Settings (Canvas, Scales, Symbol, Crosshair, Watermark, Margins)
     useEffect(() => {
@@ -1581,10 +1672,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       });
 
       [
-        emaFastSeriesRef.current,
-        emaSlowSeriesRef.current,
-        ema50SeriesRef.current,
-        ema200SeriesRef.current,
+        sma1SeriesRef.current,
+        sma2SeriesRef.current,
+        sma3SeriesRef.current,
+        ema1SeriesRef.current,
+        ema2SeriesRef.current,
+        ema3SeriesRef.current,
         bbUpperSeriesRef.current,
         bbMidSeriesRef.current,
         bbLowerSeriesRef.current,
@@ -1596,7 +1689,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       requestAnimationFrame(() => updateCountdownPos());
     }, [chartSettings, isDarkMode, chartType, scaleMode, activeTool, symbol, interval, isReplayMode, drawEmaCloud, updateCountdownPos]);
 
-    // Update all series data & STRICTLY PRESERVE USER'S LAST ZOOM across coin & timeframe switches
+    // Update all series data & STRICTLY PRESERVE PER-COIN ZOOM/POSITION across coin & timeframe switches
     useEffect(() => {
       const chart = chartRef.current;
       const cs = candleSeriesRef.current;
@@ -1604,24 +1697,76 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       const as = areaSeriesRef.current;
       const vs = volumeSeriesRef.current;
       const vms = volMaSeriesRef.current;
-      const ef = emaFastSeriesRef.current;
-      const es = emaSlowSeriesRef.current;
-      const e50 = ema50SeriesRef.current;
-      const e200 = ema200SeriesRef.current;
+      const s1 = sma1SeriesRef.current;
+      const s2 = sma2SeriesRef.current;
+      const s3 = sma3SeriesRef.current;
+      const e1 = ema1SeriesRef.current;
+      const e2 = ema2SeriesRef.current;
+      const e3 = ema3SeriesRef.current;
       const bbu = bbUpperSeriesRef.current;
       const bbm = bbMidSeriesRef.current;
       const bbl = bbLowerSeriesRef.current;
 
-      if (!chart || !cs || !ls || !as || !vs || !vms || !ef || !es || !e50 || !e200 || !bbu || !bbm || !bbl) {
+      if (
+        !chart ||
+        !cs ||
+        !ls ||
+        !as ||
+        !vs ||
+        !vms ||
+        !s1 ||
+        !s2 ||
+        !s3 ||
+        !e1 ||
+        !e2 ||
+        !e3 ||
+        !bbu ||
+        !bbm ||
+        !bbl
+      ) {
         return;
       }
       if (!effectiveCandles.length) return;
+
+      const toLwLineStyle = (st: DrawingLineStyle): LineStyle =>
+        st === 'dashed'
+          ? LineStyle.Dashed
+          : st === 'dotted'
+          ? LineStyle.Dotted
+          : LineStyle.Solid;
+
+      const volCfg = indicators.volume;
+      const seCfg = indicators.smaEma;
+
+      const buildVolBar = (idx: number): VolumeBar => {
+        const rawV = effectiveVolumes[idx];
+        const c = effectiveCandles[idx];
+        const prevClose = idx > 0 ? effectiveCandles[idx - 1].close : c.open;
+        const isUp = volCfg.colorBasedOnPrevClose
+          ? c.close >= prevClose
+          : c.close >= c.open;
+        return {
+          time: rawV.time,
+          value: rawV.value,
+          color: isUp ? volCfg.growingColor : volCfg.fallingColor,
+        };
+      };
 
       const key = `${symbol}_${interval}`;
       const isSymbolOrTfSwitch = prevSymIntervalRef.current !== key;
       const prevSnap = prevSeriesStateRef.current;
       const lastRawCandle = effectiveCandles[effectiveCandles.length - 1];
-      const lastRawVol = effectiveVolumes[effectiveVolumes.length - 1];
+      const lastIdx = effectiveCandles.length - 1;
+      const lastStyledVol = effectiveVolumes.length ? buildVolBar(effectiveVolumes.length - 1) : null;
+
+      const seActiveOnTf =
+        seCfg.enabled &&
+        !seCfg.hidden &&
+        isVisibilityActiveOnTimeframe(seCfg.visibility, interval);
+      const volActiveOnTf =
+        volCfg.enabled &&
+        !volCfg.hidden &&
+        isVisibilityActiveOnTimeframe(volCfg.visibility, interval);
 
       // Zero-jank in-place .update() fast path for live sub-second / 1-second candle ticks
       const isLiveTickOnly =
@@ -1671,44 +1816,47 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           const closePt = { time: lastRawCandle.time as UTCTimestamp, value: lastRawCandle.close };
           ls.update(closePt);
           as.update(closePt);
-          if (lastRawVol) vs.update(lastRawVol as never);
+          if (lastStyledVol) vs.update(lastStyledVol as never);
 
-          const emaFast = computeEMA(effectiveCandles, indicators.emaFast.period);
-          const emaSlow = computeEMA(effectiveCandles, indicators.emaSlow.period);
-          const ema50 = indicators.ema50.enabled
-            ? computeEMA(effectiveCandles, indicators.ema50.period)
-            : [];
-          const ema200 = indicators.ema200.enabled
-            ? computeEMA(effectiveCandles, indicators.ema200.period)
-            : [];
-          const volMa = computeVolumeSMA(effectiveVolumes, indicators.volume.maPeriod);
+          const sma1 = seCfg.sma1.enabled ? computeSMA(effectiveCandles, seCfg.sma1.period, seCfg.sma1.source) : [];
+          const sma2 = seCfg.sma2.enabled ? computeSMA(effectiveCandles, seCfg.sma2.period, seCfg.sma2.source) : [];
+          const sma3 = seCfg.sma3.enabled ? computeSMA(effectiveCandles, seCfg.sma3.period, seCfg.sma3.source) : [];
+          const ema1 = seCfg.ema1.enabled ? computeEMA(effectiveCandles, seCfg.ema1.period, seCfg.ema1.source) : [];
+          const ema2 = seCfg.ema2.enabled ? computeEMA(effectiveCandles, seCfg.ema2.period, seCfg.ema2.source) : [];
+          const ema3 = seCfg.ema3.enabled ? computeEMA(effectiveCandles, seCfg.ema3.period, seCfg.ema3.source) : [];
+          const volMa = computeVolumeSMA(effectiveVolumes, volCfg.maPeriod);
           const bb = indicators.bb.enabled
             ? computeBollingerBands(effectiveCandles, indicators.bb.period, indicators.bb.stdDev)
             : { upper: [], middle: [], lower: [] };
-          const rsiData = indicators.rsi.enabled
-            ? computeRSI(effectiveCandles, indicators.rsi.period)
-            : [];
+          const rsiData =
+            indicators.rsi.enabled && !indicators.rsi.hidden
+              ? computeRSI(effectiveCandles, indicators.rsi.period)
+              : [];
 
-          emaFastRef.current = emaFast;
-          emaSlowRef.current = emaSlow;
+          ema1Ref.current = ema1;
+          ema2Ref.current = ema2;
 
-          if (emaFast.length) ef.update(emaFast[emaFast.length - 1] as never);
-          if (emaSlow.length) es.update(emaSlow[emaSlow.length - 1] as never);
-          if (ema50.length) e50.update(ema50[ema50.length - 1] as never);
-          if (ema200.length) e200.update(ema200[ema200.length - 1] as never);
+          if (sma1.length) s1.update(sma1[sma1.length - 1] as never);
+          if (sma2.length) s2.update(sma2[sma2.length - 1] as never);
+          if (sma3.length) s3.update(sma3[sma3.length - 1] as never);
+          if (ema1.length) e1.update(ema1[ema1.length - 1] as never);
+          if (ema2.length) e2.update(ema2[ema2.length - 1] as never);
+          if (ema3.length) e3.update(ema3[ema3.length - 1] as never);
           if (volMa.length) vms.update(volMa[volMa.length - 1] as never);
           if (bb.upper.length) bbu.update(bb.upper[bb.upper.length - 1] as never);
           if (bb.middle.length) bbm.update(bb.middle[bb.middle.length - 1] as never);
           if (bb.lower.length) bbl.update(bb.lower[bb.lower.length - 1] as never);
-          if (rsiSeriesRef.current && indicators.rsi.enabled && rsiData.length) {
+          if (rsiSeriesRef.current && indicators.rsi.enabled && !indicators.rsi.hidden && rsiData.length) {
             rsiSeriesRef.current.update(rsiData[rsiData.length - 1] as never);
           }
 
           const nextIndVals = {
-            emaFast: emaFast[emaFast.length - 1]?.value,
-            emaSlow: emaSlow[emaSlow.length - 1]?.value,
-            ema50: ema50[ema50.length - 1]?.value,
-            ema200: ema200[ema200.length - 1]?.value,
+            sma1: sma1[sma1.length - 1]?.value,
+            sma2: sma2[sma2.length - 1]?.value,
+            sma3: sma3[sma3.length - 1]?.value,
+            ema1: ema1[ema1.length - 1]?.value,
+            ema2: ema2[ema2.length - 1]?.value,
+            ema3: ema3[ema3.length - 1]?.value,
             bbUpper: bb.upper[bb.upper.length - 1]?.value,
             bbMid: bb.middle[bb.middle.length - 1]?.value,
             bbLower: bb.lower[bb.lower.length - 1]?.value,
@@ -1749,7 +1897,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       // Guard against internal setData range emissions clobbering saved zoom!
       isApplyingZoomRef.current = true;
 
-      const lastClose = effectiveCandles[effectiveCandles.length - 1].close;
+      const lastClose = effectiveCandles[lastIdx].close;
       const prec =
         chartSettings.symbol.precision === 'default'
           ? getPrecision(lastClose)
@@ -1761,18 +1909,49 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         formatter: (price: number) => fmtPrice(price, prec),
       };
 
+      const sePrec =
+        seCfg.precision === 'default' ? prec : parseInt(seCfg.precision, 10);
+      const sePriceFormat = {
+        type: 'custom' as const,
+        minMove: Math.pow(10, -sePrec),
+        formatter: (price: number) => fmtPrice(price, sePrec),
+      };
+
+      const applyMaOpts = (
+        ser: ISeriesApi<'Line'>,
+        cfg: typeof seCfg.ema1
+      ) => {
+        ser.applyOptions({
+          priceFormat: sePriceFormat,
+          visible: seActiveOnTf && cfg.enabled,
+          color: cfg.color,
+          lineWidth: Math.max(1, Math.min(4, cfg.lineWidth)) as 1 | 2 | 3 | 4,
+          lineStyle: toLwLineStyle(cfg.lineStyle),
+        });
+      };
+
       cs.applyOptions({ priceFormat });
       ls.applyOptions({ priceFormat });
       as.applyOptions({ priceFormat });
-      ef.applyOptions({ priceFormat, visible: indicators.emaFast.enabled, color: indicators.emaFast.color });
-      es.applyOptions({ priceFormat, visible: indicators.emaSlow.enabled, color: indicators.emaSlow.color });
-      e50.applyOptions({ priceFormat, visible: indicators.ema50.enabled, color: indicators.ema50.color });
-      e200.applyOptions({ priceFormat, visible: indicators.ema200.enabled, color: indicators.ema200.color });
-      bbu.applyOptions({ priceFormat, visible: indicators.bb.enabled, color: indicators.bb.color });
-      bbm.applyOptions({ priceFormat, visible: indicators.bb.enabled, color: indicators.bb.color });
-      bbl.applyOptions({ priceFormat, visible: indicators.bb.enabled, color: indicators.bb.color });
-      vs.applyOptions({ visible: indicators.volume.enabled });
-      vms.applyOptions({ visible: indicators.volume.enabled && indicators.volume.showMa });
+      applyMaOpts(s1, seCfg.sma1);
+      applyMaOpts(s2, seCfg.sma2);
+      applyMaOpts(s3, seCfg.sma3);
+      applyMaOpts(e1, seCfg.ema1);
+      applyMaOpts(e2, seCfg.ema2);
+      applyMaOpts(e3, seCfg.ema3);
+
+      const bbVisible = indicators.bb.enabled && !indicators.bb.hidden;
+      bbu.applyOptions({ priceFormat, visible: bbVisible, color: indicators.bb.color });
+      bbm.applyOptions({ priceFormat, visible: bbVisible, color: indicators.bb.color });
+      bbl.applyOptions({ priceFormat, visible: bbVisible, color: indicators.bb.color });
+
+      vs.applyOptions({ visible: volActiveOnTf && volCfg.showVolume });
+      vms.applyOptions({
+        visible: volActiveOnTf && volCfg.showMa,
+        color: volCfg.maColor || '#9c27b0',
+        lineWidth: Math.max(1, Math.min(4, volCfg.maLineWidth)) as 1 | 2 | 3 | 4,
+        lineStyle: toLwLineStyle(volCfg.maLineStyle),
+      });
 
       chart.timeScale().applyOptions({
         timeVisible: !['1d', '1w'].includes(interval),
@@ -1803,40 +1982,51 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       const closeLine = effectiveCandles.map((c) => ({ time: c.time as UTCTimestamp, value: c.close }));
       ls.setData(closeLine);
       as.setData(closeLine);
-      vs.setData(effectiveVolumes as never);
+
+      const styledVolumes = effectiveVolumes.map((_, idx) => buildVolBar(idx));
+      vs.setData(styledVolumes as never);
 
       // Compute Indicators
-      const emaFast = computeEMA(effectiveCandles, indicators.emaFast.period);
-      const emaSlow = computeEMA(effectiveCandles, indicators.emaSlow.period);
-      const ema50 = indicators.ema50.enabled ? computeEMA(effectiveCandles, indicators.ema50.period) : [];
-      const ema200 = indicators.ema200.enabled ? computeEMA(effectiveCandles, indicators.ema200.period) : [];
-      const volMa = computeVolumeSMA(effectiveVolumes, indicators.volume.maPeriod);
+      const sma1 = seCfg.sma1.enabled ? computeSMA(effectiveCandles, seCfg.sma1.period, seCfg.sma1.source) : [];
+      const sma2 = seCfg.sma2.enabled ? computeSMA(effectiveCandles, seCfg.sma2.period, seCfg.sma2.source) : [];
+      const sma3 = seCfg.sma3.enabled ? computeSMA(effectiveCandles, seCfg.sma3.period, seCfg.sma3.source) : [];
+      const ema1 = seCfg.ema1.enabled ? computeEMA(effectiveCandles, seCfg.ema1.period, seCfg.ema1.source) : [];
+      const ema2 = seCfg.ema2.enabled ? computeEMA(effectiveCandles, seCfg.ema2.period, seCfg.ema2.source) : [];
+      const ema3 = seCfg.ema3.enabled ? computeEMA(effectiveCandles, seCfg.ema3.period, seCfg.ema3.source) : [];
+      const volMa = computeVolumeSMA(effectiveVolumes, volCfg.maPeriod);
       const bb = indicators.bb.enabled
         ? computeBollingerBands(effectiveCandles, indicators.bb.period, indicators.bb.stdDev)
         : { upper: [], middle: [], lower: [] };
-      const rsiData = indicators.rsi.enabled ? computeRSI(effectiveCandles, indicators.rsi.period) : [];
+      const rsiData =
+        indicators.rsi.enabled && !indicators.rsi.hidden
+          ? computeRSI(effectiveCandles, indicators.rsi.period)
+          : [];
 
-      emaFastRef.current = emaFast;
-      emaSlowRef.current = emaSlow;
+      ema1Ref.current = ema1;
+      ema2Ref.current = ema2;
 
-      ef.setData(emaFast as never);
-      es.setData(emaSlow as never);
-      e50.setData(ema50 as never);
-      e200.setData(ema200 as never);
+      s1.setData(sma1 as never);
+      s2.setData(sma2 as never);
+      s3.setData(sma3 as never);
+      e1.setData(ema1 as never);
+      e2.setData(ema2 as never);
+      e3.setData(ema3 as never);
       vms.setData(volMa as never);
       bbu.setData(bb.upper as never);
       bbm.setData(bb.middle as never);
       bbl.setData(bb.lower as never);
 
-      if (rsiSeriesRef.current && indicators.rsi.enabled) {
+      if (rsiSeriesRef.current && indicators.rsi.enabled && !indicators.rsi.hidden) {
         rsiSeriesRef.current.setData(rsiData as never);
       }
 
       const nextIndVals = {
-        emaFast: emaFast[emaFast.length - 1]?.value,
-        emaSlow: emaSlow[emaSlow.length - 1]?.value,
-        ema50: ema50[ema50.length - 1]?.value,
-        ema200: ema200[ema200.length - 1]?.value,
+        sma1: sma1[sma1.length - 1]?.value,
+        sma2: sma2[sma2.length - 1]?.value,
+        sma3: sma3[sma3.length - 1]?.value,
+        ema1: ema1[ema1.length - 1]?.value,
+        ema2: ema2[ema2.length - 1]?.value,
+        ema3: ema3[ema3.length - 1]?.value,
         bbUpper: bb.upper[bb.upper.length - 1]?.value,
         bbMid: bb.middle[bb.middle.length - 1]?.value,
         bbLower: bb.lower[bb.lower.length - 1]?.value,
@@ -1851,9 +2041,29 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         chart
           .priceScale(chartSettings.scales.scalesPlacement)
           .applyOptions({ autoScale: chartSettings.scales.autoScale });
-        const { visibleBars, rightOffset } = savedZoomRef.current;
-        const lastIdx = effectiveCandles.length - 1;
-        const to = lastIdx + rightOffset;
+
+        // Restore this coin+timeframe's exact saved position/zoom if available!
+        const perSymSaved = symbolViewportsRef.current[key];
+        const chosenZoom = perSymSaved || savedZoomRef.current;
+        const visibleBars = chosenZoom.visibleBars;
+        let to = lastIdx + chosenZoom.rightOffset;
+
+        if (perSymSaved?.toTime !== undefined && effectiveCandles.length > 5) {
+          const firstT = effectiveCandles[0].time;
+          const lastT = effectiveCandles[lastIdx].time;
+          if (perSymSaved.toTime >= firstT && perSymSaved.toTime <= lastT) {
+            let bestIdx = lastIdx;
+            let bestDiff = Infinity;
+            for (let i = 0; i <= lastIdx; i++) {
+              const d = Math.abs(effectiveCandles[i].time - perSymSaved.toTime);
+              if (d < bestDiff) {
+                bestDiff = d;
+                bestIdx = i;
+              }
+            }
+            to = bestIdx;
+          }
+        }
         const from = to - visibleBars;
 
         chart.timeScale().setVisibleLogicalRange({ from, to });
@@ -3224,17 +3434,14 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                 </div>
               )}
 
-            {/* Collapsible TradingView Indicator Legend Stack (Screenshots 2 & 3) */}
+            {/* Collapsible TradingView Indicator Legend Stack */}
             {(chartSettings.statusLine.indTitles || chartSettings.statusLine.indValues) && (() => {
               const baseCoin = symbol.replace(/USDT$|BUSD$|FDUSD$|USDC$/, '');
-              const hasEma =
-                indicators.emaFast.enabled ||
-                indicators.emaSlow.enabled ||
-                indicators.ema50.enabled ||
-                indicators.ema200.enabled;
+              const volCfg = indicators.volume;
+              const seCfg = indicators.smaEma;
               const indRowsCount =
-                (indicators.volume.enabled ? 1 : 0) +
-                (hasEma ? 1 : 0) +
+                (volCfg.enabled ? 1 : 0) +
+                (seCfg.enabled ? 1 : 0) +
                 (indicators.bb.enabled ? 1 : 0) +
                 (indicators.rsi.enabled ? 1 : 0);
 
@@ -3247,6 +3454,33 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                       : `rgba(255, 255, 255, ${chartSettings.statusLine.indBackgroundOpacity / 100})`,
                   }
                 : undefined;
+
+              const volHidden = Boolean(volCfg.hidden);
+              const seHidden = Boolean(seCfg.hidden);
+              const bbHidden = Boolean(indicators.bb.hidden);
+              const rsiHidden = Boolean(indicators.rsi.hidden);
+
+              const fmtVolLegend = (v: number) =>
+                volCfg.precision === 'default'
+                  ? fmtCompact(v)
+                  : v.toLocaleString('en-US', {
+                      minimumFractionDigits: parseInt(volCfg.precision, 10),
+                      maximumFractionDigits: parseInt(volCfg.precision, 10),
+                    });
+
+              const sePrec =
+                seCfg.precision === 'default' ? undefined : parseInt(seCfg.precision, 10);
+
+              const activeMaOutputs = (
+                [
+                  { cfg: seCfg.sma1, val: indValues.sma1 },
+                  { cfg: seCfg.sma2, val: indValues.sma2 },
+                  { cfg: seCfg.sma3, val: indValues.sma3 },
+                  { cfg: seCfg.ema1, val: indValues.ema1 },
+                  { cfg: seCfg.ema2, val: indValues.ema2 },
+                  { cfg: seCfg.ema3, val: indValues.ema3 },
+                ] as const
+              ).filter((x) => x.cfg.enabled);
 
               return (
                 <div className="pointer-events-auto flex flex-col items-start gap-1">
@@ -3263,69 +3497,92 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                   ) : (
                     <>
                       {/* Volume Indicator Row */}
-                      {indicators.volume.enabled && (
+                      {volCfg.enabled && (
                         <div
                           style={bgStyle}
-                          className="group/ind relative inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-[4px] border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors"
+                          className={`group/ind relative inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded-[4px] border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors ${
+                            volHidden ? 'opacity-60' : ''
+                          }`}
                         >
-                          {/* TradingView dark hover tooltip */}
                           <span className="pointer-events-none opacity-0 group-hover/ind:opacity-100 transition-opacity absolute -top-7 left-0 px-2 py-0.5 rounded bg-[#131722] text-white text-[11px] font-medium whitespace-nowrap shadow-md z-30">
                             Volume · {baseCoin}
                           </span>
                           {chartSettings.statusLine.indTitles && (
-                            <span className="text-[var(--text-main)]">
+                            <span
+                              className={
+                                volHidden
+                                  ? 'text-[var(--text-muted)]'
+                                  : 'text-[var(--text-main)]'
+                              }
+                            >
                               Vol · {baseCoin}
-                              {chartSettings.statusLine.indInputs && indicators.volume.showMa && (
-                                <span className="text-[var(--text-muted)] ml-1">
-                                  {indicators.volume.maPeriod}
-                                </span>
-                              )}
+                              {chartSettings.statusLine.indInputs &&
+                                volCfg.inputsInStatusLine &&
+                                volCfg.showMa && (
+                                  <span className="text-[var(--text-muted)] ml-1">
+                                    {volCfg.maPeriod}
+                                  </span>
+                                )}
                             </span>
                           )}
-                          {chartSettings.statusLine.indValues && (
-                            <span className="font-mono-num text-[11.5px] inline-flex items-center gap-1.5 group-hover/ind:hidden">
-                              {legendVol !== undefined && (
-                                <span className="text-[#089981]">{fmtCompact(legendVol)}</span>
-                              )}
-                              {indicators.volume.showMa && indValues.volMa !== undefined && (
-                                <span className="text-[#9c27b0]">{fmtCompact(indValues.volMa)}</span>
-                              )}
-                            </span>
-                          )}
-                          {/* Hover Action Controls (Exact Screenshot 5: Eye, Hex Gear, Trash, ...) */}
-                          <span className="hidden group-hover/ind:inline-flex items-center gap-0.5 ml-0.5">
+                          {!volHidden &&
+                            chartSettings.statusLine.indValues &&
+                            volCfg.valuesInStatusLine && (
+                              <span className="font-mono-num text-[11.5px] inline-flex items-center gap-1.5 group-hover/ind:hidden">
+                                {volCfg.showVolume && legendVol !== undefined && (
+                                  <span className="text-[#089981]">{fmtVolLegend(legendVol)}</span>
+                                )}
+                                {volCfg.showMa && indValues.volMa !== undefined && (
+                                  <span style={{ color: volCfg.maColor || '#9c27b0' }}>
+                                    {fmtVolLegend(indValues.volMa)}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          {/* Hover Action Controls (Eye = Hide ONLY, Gear = Vol Settings, Trash = Remove) */}
+                          <span
+                            className={`${
+                              volHidden ? 'inline-flex' : 'hidden group-hover/ind:inline-flex'
+                            } items-center gap-0.5 ml-0.5`}
+                          >
                             {onUpdateIndicators && (
                               <button
                                 type="button"
                                 onClick={() =>
                                   onUpdateIndicators((prev) => ({
                                     ...prev,
-                                    volume: { ...prev.volume, enabled: false },
+                                    volume: { ...prev.volume, hidden: !prev.volume.hidden },
                                   }))
                                 }
-                                title="Hide Volume"
+                                title={volHidden ? 'Show Volume' : 'Hide Volume'}
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
                               >
-                                <Eye className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                {volHidden ? (
+                                  <EyeOff className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" strokeWidth={1.6} />
+                                )}
                               </button>
                             )}
-                            {onOpenIndicators && (
-                              <button
-                                type="button"
-                                onClick={onOpenIndicators}
-                                title="Indicator Settings"
-                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
-                              >
-                                <HexSettingsIcon className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onOpenIndicatorSettings
+                                  ? onOpenIndicatorSettings('volume')
+                                  : onOpenIndicators?.()
+                              }
+                              title="Volume Settings"
+                              className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                            >
+                              <HexSettingsIcon className="w-3.5 h-3.5" />
+                            </button>
                             {onUpdateIndicators && (
                               <button
                                 type="button"
                                 onClick={() =>
                                   onUpdateIndicators((prev) => ({
                                     ...prev,
-                                    volume: { ...prev.volume, enabled: false },
+                                    volume: { ...prev.volume, enabled: false, hidden: false },
                                   }))
                                 }
                                 title="Remove Volume"
@@ -3334,124 +3591,122 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 <Trash2 className="w-3.5 h-3.5" strokeWidth={1.6} />
                               </button>
                             )}
-                            {onOpenIndicators && (
-                              <button
-                                type="button"
-                                onClick={onOpenIndicators}
-                                title="More Indicator Options"
-                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
-                              >
-                                <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.7} />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onOpenIndicatorSettings
+                                  ? onOpenIndicatorSettings('volume')
+                                  : onOpenIndicators?.()
+                              }
+                              title="More Volume Options"
+                              className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                            >
+                              <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.7} />
+                            </button>
                           </span>
                         </div>
                       )}
 
-                      {/* EMA Bundle Indicator Row */}
-                      {hasEma && (
+                      {/* SMA/EMA Indicator Row */}
+                      {seCfg.enabled && (
                         <div
                           style={bgStyle}
-                          className="group/ind inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors flex-wrap"
+                          className={`group/ind inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors flex-wrap ${
+                            seHidden ? 'opacity-60' : ''
+                          }`}
                         >
                           {chartSettings.statusLine.indTitles && (
-                            <span className="text-[var(--text-main)]">
-                              EMA
-                              {chartSettings.statusLine.indInputs && (
+                            <span
+                              className={
+                                seHidden
+                                  ? 'text-[var(--text-muted)]'
+                                  : 'text-[var(--text-main)]'
+                              }
+                            >
+                              SMA/EMA
+                              {chartSettings.statusLine.indInputs && seCfg.inputsInStatusLine && (
                                 <span className="text-[var(--text-muted)] ml-1">
-                                  {[
-                                    indicators.emaFast.enabled && `${indicators.emaFast.period} close`,
-                                    indicators.emaSlow.enabled && `${indicators.emaSlow.period} close`,
-                                    indicators.ema50.enabled && `${indicators.ema50.period} close`,
-                                    indicators.ema200.enabled && `${indicators.ema200.period} close`,
-                                  ]
-                                    .filter(Boolean)
+                                  {activeMaOutputs
+                                    .map((x) => `${x.cfg.period} ${x.cfg.source}`)
                                     .join(' ')}
                                 </span>
                               )}
                             </span>
                           )}
-                          {chartSettings.statusLine.indValues && (
-                            <span className="font-mono-num text-[11.5px] inline-flex items-center gap-2">
-                              {indicators.emaFast.enabled && (
-                                <span style={{ color: indicators.emaFast.color }}>
-                                  {fmtPrice(indValues.emaFast)}
-                                </span>
-                              )}
-                              {indicators.emaSlow.enabled && (
-                                <span style={{ color: indicators.emaSlow.color }}>
-                                  {fmtPrice(indValues.emaSlow)}
-                                </span>
-                              )}
-                              {indicators.ema50.enabled && (
-                                <span style={{ color: indicators.ema50.color }}>
-                                  {fmtPrice(indValues.ema50)}
-                                </span>
-                              )}
-                              {indicators.ema200.enabled && (
-                                <span style={{ color: indicators.ema200.color }}>
-                                  {fmtPrice(indValues.ema200)}
-                                </span>
-                              )}
-                            </span>
-                          )}
-                          <span className="hidden group-hover/ind:inline-flex items-center gap-0.5 ml-1 pl-1 border-l border-[var(--border)]/70">
+                          {!seHidden &&
+                            chartSettings.statusLine.indValues &&
+                            seCfg.valuesInStatusLine && (
+                              <span className="font-mono-num text-[11.5px] inline-flex items-center gap-2 group-hover/ind:hidden">
+                                {activeMaOutputs.map((x, i) => (
+                                  <span key={i} style={{ color: x.cfg.color }}>
+                                    {fmtPrice(x.val, sePrec)}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          <span
+                            className={`${
+                              seHidden ? 'inline-flex' : 'hidden group-hover/ind:inline-flex'
+                            } items-center gap-0.5 ml-0.5`}
+                          >
                             {onUpdateIndicators && (
                               <button
                                 type="button"
                                 onClick={() =>
                                   onUpdateIndicators((prev) => ({
                                     ...prev,
-                                    emaFast: { ...prev.emaFast, enabled: false },
-                                    emaSlow: { ...prev.emaSlow, enabled: false },
-                                    ema50: { ...prev.ema50, enabled: false },
-                                    ema200: { ...prev.ema200, enabled: false },
+                                    smaEma: { ...prev.smaEma, hidden: !prev.smaEma.hidden },
                                   }))
                                 }
-                                title="Hide EMAs"
+                                title={seHidden ? 'Show SMA/EMA' : 'Hide SMA/EMA'}
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
                               >
-                                <Eye className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                {seHidden ? (
+                                  <EyeOff className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                )}
                               </button>
                             )}
-                            {onOpenIndicators && (
-                              <button
-                                type="button"
-                                onClick={onOpenIndicators}
-                                title="EMA Settings"
-                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
-                              >
-                                <HexSettingsIcon className="w-3.5 h-3.5" />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onOpenIndicatorSettings
+                                  ? onOpenIndicatorSettings('smaEma')
+                                  : onOpenIndicators?.()
+                              }
+                              title="SMA/EMA Settings"
+                              className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                            >
+                              <HexSettingsIcon className="w-3.5 h-3.5" />
+                            </button>
                             {onUpdateIndicators && (
                               <button
                                 type="button"
                                 onClick={() =>
                                   onUpdateIndicators((prev) => ({
                                     ...prev,
-                                    emaFast: { ...prev.emaFast, enabled: false },
-                                    emaSlow: { ...prev.emaSlow, enabled: false },
-                                    ema50: { ...prev.ema50, enabled: false },
-                                    ema200: { ...prev.ema200, enabled: false },
+                                    smaEma: { ...prev.smaEma, enabled: false, hidden: false },
                                   }))
                                 }
-                                title="Remove EMAs"
+                                title="Remove SMA/EMA"
                                 className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] hover:text-[var(--down)] cursor-pointer"
                               >
                                 <Trash2 className="w-3.5 h-3.5" strokeWidth={1.6} />
                               </button>
                             )}
-                            {onOpenIndicators && (
-                              <button
-                                type="button"
-                                onClick={onOpenIndicators}
-                                title="More Options"
-                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
-                              >
-                                <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.7} />
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onOpenIndicatorSettings
+                                  ? onOpenIndicatorSettings('smaEma')
+                                  : onOpenIndicators?.()
+                              }
+                              title="More SMA/EMA Options"
+                              className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                            >
+                              <MoreHorizontal className="w-3.5 h-3.5" strokeWidth={1.7} />
+                            </button>
                           </span>
                         </div>
                       )}
@@ -3460,14 +3715,39 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                       {indicators.bb.enabled && (
                         <div
                           style={bgStyle}
-                          className="group/ind inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors"
+                          className={`group/ind inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors ${
+                            bbHidden ? 'opacity-60' : ''
+                          }`}
                         >
-                          <span style={{ color: indicators.bb.color }}>
+                          <span style={{ color: bbHidden ? 'var(--text-muted)' : indicators.bb.color }}>
                             BB
                             {chartSettings.statusLine.indInputs &&
                               ` ${indicators.bb.period} close ${indicators.bb.stdDev}`}
                           </span>
-                          <span className="hidden group-hover/ind:inline-flex items-center gap-0.5 ml-1 pl-1 border-l border-[var(--border)]/70">
+                          <span
+                            className={`${
+                              bbHidden ? 'inline-flex' : 'hidden group-hover/ind:inline-flex'
+                            } items-center gap-0.5 ml-1 pl-1 border-l border-[var(--border)]/70`}
+                          >
+                            {onUpdateIndicators && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateIndicators((prev) => ({
+                                    ...prev,
+                                    bb: { ...prev.bb, hidden: !prev.bb.hidden },
+                                  }))
+                                }
+                                title={bbHidden ? 'Show BB' : 'Hide BB'}
+                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                              >
+                                {bbHidden ? (
+                                  <EyeOff className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                )}
+                              </button>
+                            )}
                             {onOpenIndicators && (
                               <button
                                 type="button"
@@ -3484,7 +3764,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 onClick={() =>
                                   onUpdateIndicators((prev) => ({
                                     ...prev,
-                                    bb: { ...prev.bb, enabled: false },
+                                    bb: { ...prev.bb, enabled: false, hidden: false },
                                   }))
                                 }
                                 title="Remove BB"
@@ -3501,18 +3781,43 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                       {indicators.rsi.enabled && (
                         <div
                           style={bgStyle}
-                          className="group/ind inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors"
+                          className={`group/ind inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded border border-transparent hover:border-[var(--border)] hover:bg-[var(--bg-surface)] text-[12px] transition-colors ${
+                            rsiHidden ? 'opacity-60' : ''
+                          }`}
                         >
-                          <span style={{ color: indicators.rsi.color }}>
+                          <span style={{ color: rsiHidden ? 'var(--text-muted)' : indicators.rsi.color }}>
                             RSI
                             {chartSettings.statusLine.indInputs && ` ${indicators.rsi.period}`}
                           </span>
-                          {chartSettings.statusLine.indValues && indValues.rsi !== undefined && (
+                          {!rsiHidden && chartSettings.statusLine.indValues && indValues.rsi !== undefined && (
                             <span className="font-mono-num text-[11.5px]" style={{ color: indicators.rsi.color }}>
                               {indValues.rsi.toFixed(2)}
                             </span>
                           )}
-                          <span className="hidden group-hover/ind:inline-flex items-center gap-0.5 ml-1 pl-1 border-l border-[var(--border)]/70">
+                          <span
+                            className={`${
+                              rsiHidden ? 'inline-flex' : 'hidden group-hover/ind:inline-flex'
+                            } items-center gap-0.5 ml-1 pl-1 border-l border-[var(--border)]/70`}
+                          >
+                            {onUpdateIndicators && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onUpdateIndicators((prev) => ({
+                                    ...prev,
+                                    rsi: { ...prev.rsi, hidden: !prev.rsi.hidden },
+                                  }))
+                                }
+                                title={rsiHidden ? 'Show RSI' : 'Hide RSI'}
+                                className="w-5 h-5 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
+                              >
+                                {rsiHidden ? (
+                                  <EyeOff className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" strokeWidth={1.7} />
+                                )}
+                              </button>
+                            )}
                             {onOpenIndicators && (
                               <button
                                 type="button"
@@ -3529,7 +3834,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                                 onClick={() =>
                                   onUpdateIndicators((prev) => ({
                                     ...prev,
-                                    rsi: { ...prev.rsi, enabled: false },
+                                    rsi: { ...prev.rsi, enabled: false, hidden: false },
                                   }))
                                 }
                                 title="Remove RSI"
@@ -3542,7 +3847,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                         </div>
                       )}
 
-                      {/* Collapse [^] Square Button (Screenshot 2) */}
+                      {/* Collapse [^] Square Button */}
                       <button
                         type="button"
                         onClick={() => setIndExpanded(false)}

@@ -137,15 +137,74 @@ export interface TickerData {
   prevLast?: number;
 }
 
+export type PriceSource = 'close' | 'open' | 'high' | 'low' | 'hl2' | 'hlc3' | 'ohlc4';
+
+export type IndicatorPrecision =
+  | 'default'
+  | '0'
+  | '1'
+  | '2'
+  | '3'
+  | '4'
+  | '5'
+  | '6'
+  | '7'
+  | '8';
+
+export type IndicatorSettingsTarget = 'volume' | 'smaEma';
+
+export interface MaLineConfig {
+  enabled: boolean;
+  period: number;
+  source: PriceSource;
+  color: string;
+  lineWidth: number;
+  lineStyle: DrawingLineStyle;
+}
+
+export interface SmaEmaBundleConfig {
+  enabled: boolean;
+  hidden: boolean;
+  sma1: MaLineConfig;
+  sma2: MaLineConfig;
+  sma3: MaLineConfig;
+  ema1: MaLineConfig;
+  ema2: MaLineConfig;
+  ema3: MaLineConfig;
+  plotsBackground: boolean;
+  bgColor0: string;
+  bgColor1: string;
+  precision: IndicatorPrecision;
+  labelsOnPriceScale: boolean;
+  valuesInStatusLine: boolean;
+  inputsInStatusLine: boolean;
+  visibility: DrawingVisibility;
+}
+
+export interface VolumeIndicatorConfig {
+  enabled: boolean;
+  hidden: boolean;
+  showVolume: boolean;
+  maPeriod: number;
+  colorBasedOnPrevClose: boolean;
+  growingColor: string;
+  fallingColor: string;
+  showMa: boolean;
+  maColor: string;
+  maLineWidth: number;
+  maLineStyle: DrawingLineStyle;
+  precision: IndicatorPrecision;
+  labelsOnPriceScale: boolean;
+  valuesInStatusLine: boolean;
+  inputsInStatusLine: boolean;
+  visibility: DrawingVisibility;
+}
+
 export interface IndicatorConfig {
-  emaFast: { enabled: boolean; period: number; color: string };
-  emaSlow: { enabled: boolean; period: number; color: string };
-  emaCloud: { enabled: boolean };
-  ema50: { enabled: boolean; period: number; color: string };
-  ema200: { enabled: boolean; period: number; color: string };
-  bb: { enabled: boolean; period: number; stdDev: number; color: string };
-  volume: { enabled: boolean; maPeriod: number; showMa: boolean };
-  rsi: { enabled: boolean; period: number; color: string };
+  smaEma: SmaEmaBundleConfig;
+  bb: { enabled: boolean; hidden?: boolean; period: number; stdDev: number; color: string };
+  volume: VolumeIndicatorConfig;
+  rsi: { enabled: boolean; hidden?: boolean; period: number; color: string };
 }
 
 export interface AnchorPoint {
@@ -235,6 +294,7 @@ export interface DrawingTemplate {
 export interface SavedZoomState {
   visibleBars: number;
   rightOffset: number;
+  toTime?: number;
 }
 
 export interface PriceAlert {
