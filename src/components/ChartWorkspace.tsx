@@ -30,7 +30,6 @@ import {
   Copy,
   Trash2,
   Type,
-  Star,
   GripVertical,
   LayoutGrid,
   Pencil,
@@ -398,6 +397,29 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     >('none');
     const [toolbarOffset, setToolbarOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const toolbarDragRef = useRef<{
+      startX: number;
+      startY: number;
+      origX: number;
+      origY: number;
+    } | null>(null);
+    const favBarRef = useRef<HTMLDivElement>(null);
+    const [favBarPos, setFavBarPos] = useState<{ x: number; y: number }>(() => {
+      try {
+        const raw = localStorage.getItem('tp_fav_bar_pos_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number') {
+            return { x: Math.max(8, parsed.x), y: Math.max(8, parsed.y) };
+          }
+        }
+      } catch {
+        // ignore storage errors
+      }
+      return { x: 16, y: 74 };
+    });
+    const favBarPosRef = useRef(favBarPos);
+    favBarPosRef.current = favBarPos;
+    const favBarDragRef = useRef<{
       startX: number;
       startY: number;
       origX: number;
@@ -2478,19 +2500,39 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       setToolbarMenu('none');
     }, [selectedDrawingId]);
 
-    // Drag floating selected-drawing toolbar via its grip handle
+    // Drag floating selected-drawing toolbar & floating favorites bar via their grip handles
     useEffect(() => {
       const onMove = (e: MouseEvent) => {
-        if (!toolbarDragRef.current) return;
-        const dx = e.clientX - toolbarDragRef.current.startX;
-        const dy = e.clientY - toolbarDragRef.current.startY;
-        setToolbarOffset({
-          x: toolbarDragRef.current.origX + dx,
-          y: toolbarDragRef.current.origY + dy,
-        });
+        if (toolbarDragRef.current) {
+          const dx = e.clientX - toolbarDragRef.current.startX;
+          const dy = e.clientY - toolbarDragRef.current.startY;
+          setToolbarOffset({
+            x: toolbarDragRef.current.origX + dx,
+            y: toolbarDragRef.current.origY + dy,
+          });
+        }
+        if (favBarDragRef.current) {
+          const dx = e.clientX - favBarDragRef.current.startX;
+          const dy = e.clientY - favBarDragRef.current.startY;
+          const wrapW = wrapperRef.current?.clientWidth || window.innerWidth;
+          const wrapH = wrapperRef.current?.clientHeight || window.innerHeight;
+          const barW = favBarRef.current?.offsetWidth || 180;
+          const barH = favBarRef.current?.offsetHeight || 42;
+          const nextX = Math.max(8, Math.min(Math.max(8, wrapW - barW - 8), favBarDragRef.current.origX + dx));
+          const nextY = Math.max(8, Math.min(Math.max(8, wrapH - barH - 34), favBarDragRef.current.origY + dy));
+          setFavBarPos({ x: nextX, y: nextY });
+        }
       };
       const onUp = () => {
         toolbarDragRef.current = null;
+        if (favBarDragRef.current) {
+          favBarDragRef.current = null;
+          try {
+            localStorage.setItem('tp_fav_bar_pos_v1', JSON.stringify(favBarPosRef.current));
+          } catch {
+            // ignore storage errors
+          }
+        }
       };
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
@@ -4845,13 +4887,43 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             })()}
           </div>
 
-          {/* Floating Favorite Tools Bar (TradingView Style) */}
+          {/* Freely Draggable Floating Favorite Tools Bar (Exact TradingView Style) */}
           {favoriteTools.length > 0 && (
             <div
+              ref={favBarRef}
               data-ui-overlay="true"
-              className="absolute bottom-9 left-3 z-10 bg-[var(--bg-surface)]/95 border border-[var(--border)] rounded-md shadow-md px-1.5 py-1 flex items-center gap-0.5"
+              style={{
+                left: `${favBarPos.x}px`,
+                top: `${favBarPos.y}px`,
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                if ((e.target as HTMLElement).closest('button[data-fav-tool]')) return;
+                e.preventDefault();
+                favBarDragRef.current = {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  origX: favBarPos.x,
+                  origY: favBarPos.y,
+                };
+              }}
+              className="absolute z-20 bg-white dark:bg-[var(--bg-surface)] border border-black/[0.06] dark:border-[var(--border)] rounded-[8px] shadow-[0_2px_12px_rgba(0,0,0,0.09)] dark:shadow-[0_4px_18px_rgba(0,0,0,0.45)] pl-1 pr-1.5 py-1 flex items-center gap-0.5 select-none"
             >
-              <Star className="w-3 h-3 text-[var(--amber)] fill-current mx-1 shrink-0" />
+              {/* 6-dot Vertical Drag Grip */}
+              <div
+                title="Drag favorites bar anywhere"
+                className="w-5 h-8 rounded-[5px] flex items-center justify-center text-[#b2b5be] hover:text-[#787b86] dark:text-[#787b86] dark:hover:text-[#b2b5be] cursor-grab active:cursor-grabbing shrink-0 transition-colors"
+              >
+                <svg viewBox="0 0 12 18" className="w-2.5 h-3.5" fill="currentColor" aria-hidden="true">
+                  <circle cx="3.5" cy="3.5" r="1.15" />
+                  <circle cx="8.5" cy="3.5" r="1.15" />
+                  <circle cx="3.5" cy="9" r="1.15" />
+                  <circle cx="8.5" cy="9" r="1.15" />
+                  <circle cx="3.5" cy="14.5" r="1.15" />
+                  <circle cx="8.5" cy="14.5" r="1.15" />
+                </svg>
+              </div>
+
               {favoriteTools.map((tid) => {
                 const def = ALL_TOOLS_MAP[tid];
                 if (!def) return null;
@@ -4859,15 +4931,17 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                 return (
                   <button
                     key={tid}
+                    type="button"
+                    data-fav-tool={tid}
                     onClick={() => onSelectTool(tid)}
                     title={`${def.label}${def.shortcut ? ` (${def.shortcut})` : ''}`}
-                    className={`w-7 h-7 rounded flex items-center justify-center transition-colors cursor-pointer ${
+                    className={`w-[34px] h-[34px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
                       active
-                        ? 'bg-[var(--bg-active)] text-[var(--accent)]'
-                        : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        ? 'bg-[#e8edf7] dark:bg-[var(--bg-active)] text-[#000000] dark:text-[#ffffff]'
+                        : 'text-[#000000] dark:text-[#f0f3fa] hover:bg-[#f0f3fa] dark:hover:bg-[var(--bg-hover)]'
                     }`}
                   >
-                    {def.renderIcon('w-4 h-4')}
+                    {def.renderIcon('w-[22px] h-[22px]')}
                   </button>
                 );
               })}
