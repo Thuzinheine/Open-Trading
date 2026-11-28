@@ -18,6 +18,7 @@ import { getTickSizeForPrice } from '../utils/drawingRenderer';
 import { DEFAULT_VISIBILITY } from '../utils/storage';
 import { INTERVAL_SECONDS } from '../utils/binance';
 import { ColorPalettePopover } from './ColorPalettePopover';
+import { TvSelect } from './TvSelect';
 
 interface DrawingSettingsModalProps {
   open: boolean;
@@ -34,9 +35,16 @@ interface DrawingSettingsModalProps {
 
 export type SettingsTab = 'inputs' | 'style' | 'text' | 'coordinates' | 'visibility';
 
-const FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24];
-const ACCOUNT_CURRENCIES = ['Default', 'USD', 'USDT', 'EUR', 'BTC'];
-const QTY_PRECISIONS = ['Default', '0', '1', '2', '3', '4', '5', '6', '8'];
+const FONT_SIZES = [8, 10, 11, 12, 14, 16, 18, 20, 22, 24, 28, 32, 40];
+const FONT_SIZE_OPTIONS = FONT_SIZES.map((sz) => ({ value: sz, label: String(sz) }));
+const ACCOUNT_CURRENCY_OPTIONS = ['Default', 'USD', 'USDT', 'EUR', 'BTC'].map((v) => ({
+  value: v,
+  label: v,
+}));
+const QTY_PRECISION_OPTIONS = ['Default', '0', '1', '2', '3', '4', '5', '6', '8'].map((v) => ({
+  value: v,
+  label: v,
+}));
 
 const LINE_TOOLS = new Set(['trendline', 'ray', 'infoline', 'extended', 'angle', 'arrow_line']);
 const SHAPE_FILL_TOOLS = new Set([
@@ -356,9 +364,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
   const posPriceDecimals = posEntry >= 100 ? 2 : posEntry >= 1 ? 4 : 6;
 
   const inputCls =
-    'h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[13px] outline-none focus:border-[var(--accent)] transition-colors';
-  const selectCls =
-    'tv-select h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer transition-colors';
+    'h-[34px] px-2.5 rounded-[7px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[13px] outline-none focus:border-[#131722] dark:focus:border-[var(--accent)] transition-colors';
 
   const tabsList: { id: SettingsTab; label: string }[] = isPositionTool
     ? [
@@ -377,7 +383,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 select-none pointer-events-none">
       <div
         style={{ transform: `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)` }}
-        className="pointer-events-auto w-full max-w-[396px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.2)] overflow-visible flex flex-col"
+        className="pointer-events-auto w-full max-w-[388px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.18)] overflow-visible flex flex-col"
         onClick={(e) => {
           e.stopPropagation();
           if (activePopover !== 'none') setActivePopover('none');
@@ -413,7 +419,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
               />
             ) : (
               <>
-                <h2 className="text-[19px] font-bold tracking-tight text-[var(--text-main)] truncate">
+                <h2 className="text-[18px] font-bold tracking-tight text-[var(--text-main)] truncate">
                   {displayTitle}
                 </h2>
                 <button
@@ -422,7 +428,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                   title="Rename drawing"
                   className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
                 >
-                  <Pencil className="w-4 h-4" strokeWidth={1.6} />
+                  <Pencil className="w-[15px] h-[15px]" strokeWidth={1.6} />
                 </button>
               </>
             )}
@@ -430,42 +436,44 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
           <button
             type="button"
             onClick={handleCancel}
-            className="w-8 h-8 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+            className="w-7 h-7 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
           >
             <X className="w-[18px] h-[18px]" strokeWidth={1.6} />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="px-5 border-b border-[var(--border)] flex items-center gap-5 text-[13.5px] font-semibold">
-          {tabsList.map((t) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => {
-                  setTab(t.id);
-                  setActivePopover('none');
-                }}
-                className={`relative pb-2.5 pt-1 transition-colors cursor-pointer ${
-                  active
-                    ? 'text-[var(--text-main)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                }`}
-              >
-                {t.label}
-                {active && (
-                  <span className="absolute left-0 right-0 bottom-0 h-[2.5px] rounded-t bg-[#131722] dark:bg-white" />
-                )}
-              </button>
-            );
-          })}
+        {/* Tabs (Clean TradingView inset hairline divider) */}
+        <div className="px-5">
+          <div className="border-b border-[var(--border)] flex items-center gap-5 text-[13.5px] font-semibold">
+            {tabsList.map((t) => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    setTab(t.id);
+                    setActivePopover('none');
+                  }}
+                  className={`relative pb-2 pt-1 transition-colors cursor-pointer ${
+                    active
+                      ? 'text-[var(--text-main)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                  }`}
+                >
+                  {t.label}
+                  {active && (
+                    <span className="absolute left-0 right-0 -bottom-px h-[2.5px] rounded-t bg-[#131722] dark:bg-white" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Tab Body */}
+        {/* Tab Body (Fits content cleanly — no dead empty whitespace gap!) */}
         <div
-          className={`px-5 py-4 min-h-[296px] text-[13px] space-y-3.5 ${
+          className={`px-5 py-4 text-[13px] space-y-3.5 ${
             tab === 'visibility' || tab === 'coordinates' || tab === 'inputs'
               ? 'max-h-[64vh] overflow-y-auto'
               : 'overflow-visible'
@@ -488,17 +496,12 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                   }}
                   className={`${inputCls} w-full`}
                 />
-                <select
+                <TvSelect
                   value={drawing.accountCurrency || 'Default'}
-                  onChange={(e) => patch({ accountCurrency: e.target.value })}
-                  className={`${selectCls} w-full`}
-                >
-                  {ACCOUNT_CURRENCIES.map((cur) => (
-                    <option key={cur} value={cur} className="bg-[var(--bg-surface)]">
-                      {cur}
-                    </option>
-                  ))}
-                </select>
+                  options={ACCOUNT_CURRENCY_OPTIONS}
+                  onChange={(val) => patch({ accountCurrency: val })}
+                  className="w-full"
+                />
               </div>
 
               {/* Lot size */}
@@ -532,20 +535,21 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                   }}
                   className={`${inputCls} w-full`}
                 />
-                <select
+                <TvSelect
                   value={drawing.riskUnit || '%'}
-                  onChange={(e) => patch({ riskUnit: e.target.value as '%' | 'currency' })}
-                  className={`${selectCls} w-full`}
-                >
-                  <option value="%" className="bg-[var(--bg-surface)]">
-                    %
-                  </option>
-                  <option value="currency" className="bg-[var(--bg-surface)]">
-                    {drawing.accountCurrency && drawing.accountCurrency !== 'Default'
-                      ? drawing.accountCurrency
-                      : 'USDT'}
-                  </option>
-                </select>
+                  options={[
+                    { value: '%', label: '%' },
+                    {
+                      value: 'currency',
+                      label:
+                        drawing.accountCurrency && drawing.accountCurrency !== 'Default'
+                          ? drawing.accountCurrency
+                          : 'USDT',
+                    },
+                  ]}
+                  onChange={(val) => patch({ riskUnit: val as '%' | 'currency' })}
+                  className="w-full"
+                />
               </div>
 
               {/* Entry price */}
@@ -671,17 +675,12 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
               {/* QTY precision */}
               <div className="pt-1 grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
                 <span className="text-[var(--text-main)]">QTY precision</span>
-                <select
+                <TvSelect
                   value={drawing.qtyPrecision || 'Default'}
-                  onChange={(e) => patch({ qtyPrecision: e.target.value })}
-                  className={`${selectCls} w-full`}
-                >
-                  {QTY_PRECISIONS.map((p) => (
-                    <option key={p} value={p} className="bg-[var(--bg-surface)]">
-                      {p}
-                    </option>
-                  ))}
-                </select>
+                  options={QTY_PRECISION_OPTIONS}
+                  onChange={(val) => patch({ qtyPrecision: val })}
+                  className="w-full"
+                />
                 <div />
               </div>
             </div>
@@ -894,22 +893,18 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                     )}
                   </div>
 
-                  <select
+                  <TvSelect
                     value={drawing.fontSize || 12}
-                    onChange={(e) => patch({ fontSize: parseInt(e.target.value, 10) })}
-                    className={`${selectCls} w-[96px] font-mono-num`}
-                  >
-                    {FONT_SIZES.map((sz) => (
-                      <option key={sz} value={sz} className="bg-[var(--bg-surface)]">
-                        {sz}
-                      </option>
-                    ))}
-                  </select>
+                    options={FONT_SIZE_OPTIONS}
+                    onChange={(val) => patch({ fontSize: Number(val) })}
+                    mono
+                    className="w-[96px]"
+                  />
                 </div>
               </div>
 
               {/* Price labels checkbox */}
-              <div className="pt-1">
+              <div className="pt-0.5">
                 <TvCheckbox
                   checked={drawing.showPriceLabels !== false}
                   onChange={(checked) => patch({ showPriceLabels: checked })}
@@ -918,31 +913,24 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
               </div>
 
               {/* INFO Section */}
-              <div className="pt-2 space-y-3.5">
+              <div className="pt-2 space-y-3">
                 <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
                   INFO
                 </div>
 
                 <div className="grid grid-cols-[112px_1fr] items-center gap-3">
                   <span className="text-[var(--text-main)]">Stats</span>
-                  <select
+                  <TvSelect
                     value={drawing.statsMode || 'all'}
-                    onChange={(e) => patch({ statsMode: e.target.value as StatsDisplayMode })}
-                    className={`${selectCls} w-full`}
-                  >
-                    <option value="all" className="bg-[var(--bg-surface)]">
-                      TP price offset, TP %, R/R, PnL
-                    </option>
-                    <option value="price" className="bg-[var(--bg-surface)]">
-                      TP/SL price offset &amp; %
-                    </option>
-                    <option value="percent" className="bg-[var(--bg-surface)]">
-                      Open PnL, Qty &amp; R/R
-                    </option>
-                    <option value="hidden" className="bg-[var(--bg-surface)]">
-                      Hidden
-                    </option>
-                  </select>
+                    options={[
+                      { value: 'all', label: 'TP price offset, TP %, R/R, PnL' },
+                      { value: 'price', label: 'TP/SL price offset & %' },
+                      { value: 'percent', label: 'Open PnL, Qty & R/R' },
+                      { value: 'hidden', label: 'Hidden' },
+                    ]}
+                    onChange={(val) => patch({ statsMode: val as StatsDisplayMode })}
+                    className="w-full"
+                  />
                 </div>
 
                 <div>
@@ -1137,7 +1125,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
               {isLineLike && (
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[var(--text-main)]">Extend</span>
-                  <select
+                  <TvSelect
                     value={
                       drawing.extend ||
                       (drawing.type === 'ray'
@@ -1146,22 +1134,15 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         ? 'both'
                         : 'none')
                     }
-                    onChange={(e) => patch({ extend: e.target.value as LineExtendMode })}
-                    className={`${selectCls} w-48`}
-                  >
-                    <option value="none" className="bg-[var(--bg-surface)]">
-                      Don&apos;t extend
-                    </option>
-                    <option value="left" className="bg-[var(--bg-surface)]">
-                      Extend left
-                    </option>
-                    <option value="right" className="bg-[var(--bg-surface)]">
-                      Extend right
-                    </option>
-                    <option value="both" className="bg-[var(--bg-surface)]">
-                      Extend both
-                    </option>
-                  </select>
+                    options={[
+                      { value: 'none', label: "Don't extend" },
+                      { value: 'left', label: 'Extend left' },
+                      { value: 'right', label: 'Extend right' },
+                      { value: 'both', label: 'Extend both' },
+                    ]}
+                    onChange={(val) => patch({ extend: val as LineExtendMode })}
+                    className="w-48"
+                  />
                 </div>
               )}
 
@@ -1221,48 +1202,34 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
 
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[var(--text-main)]">Stats</span>
-                    <select
+                    <TvSelect
                       value={
                         drawing.statsMode || (drawing.type === 'infoline' ? 'all' : 'hidden')
                       }
-                      onChange={(e) => patch({ statsMode: e.target.value as StatsDisplayMode })}
-                      className={`${selectCls} w-48`}
-                    >
-                      <option value="hidden" className="bg-[var(--bg-surface)]">
-                        Hidden
-                      </option>
-                      <option value="price" className="bg-[var(--bg-surface)]">
-                        Price range
-                      </option>
-                      <option value="percent" className="bg-[var(--bg-surface)]">
-                        Percent change
-                      </option>
-                      <option value="bars" className="bg-[var(--bg-surface)]">
-                        Bars &amp; duration
-                      </option>
-                      <option value="all" className="bg-[var(--bg-surface)]">
-                        All stats
-                      </option>
-                    </select>
+                      options={[
+                        { value: 'hidden', label: 'Hidden' },
+                        { value: 'price', label: 'Price range' },
+                        { value: 'percent', label: 'Percent change' },
+                        { value: 'bars', label: 'Bars & duration' },
+                        { value: 'all', label: 'All stats' },
+                      ]}
+                      onChange={(val) => patch({ statsMode: val as StatsDisplayMode })}
+                      className="w-48"
+                    />
                   </div>
 
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[var(--text-main)]">Stats position</span>
-                    <select
+                    <TvSelect
                       value={drawing.statsPosition || 'right'}
-                      onChange={(e) => patch({ statsPosition: e.target.value as StatsPosition })}
-                      className={`${selectCls} w-48`}
-                    >
-                      <option value="left" className="bg-[var(--bg-surface)]">
-                        Left
-                      </option>
-                      <option value="center" className="bg-[var(--bg-surface)]">
-                        Center
-                      </option>
-                      <option value="right" className="bg-[var(--bg-surface)]">
-                        Right
-                      </option>
-                    </select>
+                      options={[
+                        { value: 'left', label: 'Left' },
+                        { value: 'center', label: 'Center' },
+                        { value: 'right', label: 'Right' },
+                      ]}
+                      onChange={(val) => patch({ statsPosition: val as StatsPosition })}
+                      className="w-48"
+                    />
                   </div>
 
                   <div>
@@ -1312,25 +1279,21 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 </div>
 
                 {/* Font Size */}
-                <select
+                <TvSelect
                   value={drawing.fontSize || (drawing.type === 'hline' ? 12 : 14)}
-                  onChange={(e) => patch({ fontSize: parseInt(e.target.value, 10) })}
-                  className={`${selectCls} w-[92px] font-mono-num`}
-                >
-                  {FONT_SIZES.map((sz) => (
-                    <option key={sz} value={sz} className="bg-[var(--bg-surface)]">
-                      {sz}
-                    </option>
-                  ))}
-                </select>
+                  options={FONT_SIZE_OPTIONS}
+                  onChange={(val) => patch({ fontSize: Number(val) })}
+                  mono
+                  className="w-[96px]"
+                />
 
                 {/* Bold */}
                 <button
                   type="button"
                   onClick={() => patch({ fontBold: !drawing.fontBold })}
-                  className={`w-[34px] h-[34px] rounded-[6px] border font-bold text-sm cursor-pointer ${
+                  className={`w-[34px] h-[34px] rounded-[7px] border font-bold text-sm cursor-pointer ${
                     drawing.fontBold
-                      ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
+                      ? 'border-[#131722] dark:border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
                       : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
@@ -1341,9 +1304,9 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => patch({ fontItalic: !drawing.fontItalic })}
-                  className={`w-[34px] h-[34px] rounded-[6px] border italic font-serif text-sm cursor-pointer ${
+                  className={`w-[34px] h-[34px] rounded-[7px] border italic font-serif text-sm cursor-pointer ${
                     drawing.fontItalic
-                      ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
+                      ? 'border-[#131722] dark:border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
                       : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
@@ -1352,51 +1315,41 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
               </div>
 
               <textarea
-                rows={4}
+                rows={3}
                 value={drawing.text || ''}
                 onChange={(e) => patch({ text: e.target.value })}
                 placeholder="Add text"
-                className="w-full p-2.5 rounded-[8px] border border-[var(--border)] focus:border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13.5px] outline-none resize-none"
+                className="w-full h-[88px] p-2.5 rounded-[8px] border border-[var(--border)] focus:border-[#131722] dark:focus:border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13.5px] outline-none resize-none"
               />
 
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 pt-0.5">
                 <span className="text-[var(--text-main)]">Text alignment</span>
                 <div className="flex items-center gap-2">
-                  <select
+                  <TvSelect
                     value={
                       drawing.textAlignV ||
                       (drawing.type === 'hline' || drawing.type === 'rect' || drawing.type === 'ellipse'
                         ? 'middle'
                         : 'top')
                     }
-                    onChange={(e) => patch({ textAlignV: e.target.value as TextAlignV })}
-                    className={`${selectCls} w-[104px]`}
-                  >
-                    <option value="top" className="bg-[var(--bg-surface)]">
-                      Top
-                    </option>
-                    <option value="middle" className="bg-[var(--bg-surface)]">
-                      Middle
-                    </option>
-                    <option value="bottom" className="bg-[var(--bg-surface)]">
-                      Bottom
-                    </option>
-                  </select>
-                  <select
+                    options={[
+                      { value: 'top', label: 'Top' },
+                      { value: 'middle', label: 'Middle' },
+                      { value: 'bottom', label: 'Bottom' },
+                    ]}
+                    onChange={(val) => patch({ textAlignV: val as TextAlignV })}
+                    className="w-[104px]"
+                  />
+                  <TvSelect
                     value={drawing.textAlignH || 'center'}
-                    onChange={(e) => patch({ textAlignH: e.target.value as TextAlignH })}
-                    className={`${selectCls} w-[104px]`}
-                  >
-                    <option value="left" className="bg-[var(--bg-surface)]">
-                      Left
-                    </option>
-                    <option value="center" className="bg-[var(--bg-surface)]">
-                      Center
-                    </option>
-                    <option value="right" className="bg-[var(--bg-surface)]">
-                      Right
-                    </option>
-                  </select>
+                    options={[
+                      { value: 'left', label: 'Left' },
+                      { value: 'center', label: 'Center' },
+                      { value: 'right', label: 'Right' },
+                    ]}
+                    onChange={(val) => patch({ textAlignH: val as TextAlignH })}
+                    className="w-[104px]"
+                  />
                 </div>
               </div>
             </div>

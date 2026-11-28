@@ -19,6 +19,7 @@ import {
   saveCustomIndicatorDefaults,
 } from '../utils/storage';
 import { ColorPalettePopover } from './ColorPalettePopover';
+import { TvSelect } from './TvSelect';
 
 interface IndicatorSettingsModalProps {
   open: boolean;
@@ -486,40 +487,42 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
         </div>
 
         {/* Tabs: Inputs | Style | Visibility */}
-        <div className="px-5 flex items-center gap-5 border-b border-[var(--border)]">
-          {(
-            [
-              { id: 'inputs', label: 'Inputs' },
-              { id: 'style', label: 'Style' },
-              { id: 'visibility', label: 'Visibility' },
-            ] as const
-          ).map((t) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => {
-                  setTab(t.id);
-                  setActivePicker(null);
-                }}
-                className={`relative pb-2.5 pt-1 text-[13.5px] font-semibold cursor-pointer transition-colors ${
-                  active
-                    ? 'text-[var(--text-main)]'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
-                }`}
-              >
-                {t.label}
-                {active && (
-                  <span className="absolute left-0 right-0 bottom-0 h-[2.5px] rounded-t bg-[#131722] dark:bg-white" />
-                )}
-              </button>
-            );
-          })}
+        <div className="px-5">
+          <div className="flex items-center gap-5 border-b border-[var(--border)]">
+            {(
+              [
+                { id: 'inputs', label: 'Inputs' },
+                { id: 'style', label: 'Style' },
+                { id: 'visibility', label: 'Visibility' },
+              ] as const
+            ).map((t) => {
+              const active = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => {
+                    setTab(t.id);
+                    setActivePicker(null);
+                  }}
+                  className={`relative pb-2 pt-1 text-[13.5px] font-semibold cursor-pointer transition-colors ${
+                    active
+                      ? 'text-[var(--text-main)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                  }`}
+                >
+                  {t.label}
+                  {active && (
+                    <span className="absolute left-0 right-0 -bottom-px h-[2.5px] rounded-t bg-[#131722] dark:bg-white" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Scrollable Tab Body */}
-        <div className="px-5 py-4 max-h-[64vh] overflow-y-auto overflow-x-visible space-y-3.5 text-[13px]">
+        <div className="px-5 py-4 max-h-[62vh] overflow-y-auto overflow-x-visible space-y-3 text-[13px]">
           {/* ==================== INPUTS TAB ==================== */}
           {tab === 'inputs' && isVol && (
             <div className="space-y-4">
@@ -572,19 +575,12 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
                     </div>
                     <div className="flex items-center justify-between gap-4">
                       <span className="text-[var(--text-main)]">{item.sourceLabel}</span>
-                      <select
+                      <TvSelect
                         value={line.source}
-                        onChange={(e) =>
-                          patchMaLine(item.key, { source: e.target.value as PriceSource })
-                        }
-                        className="tv-select w-[108px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
-                      >
-                        {SOURCE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
+                        options={SOURCE_OPTIONS}
+                        onChange={(val) => patchMaLine(item.key, { source: val as PriceSource })}
+                        className="w-[108px]"
+                      />
                     </div>
                   </React.Fragment>
                 );
@@ -684,19 +680,12 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-[var(--text-main)] w-[94px]">Precision</span>
-                  <select
+                  <TvSelect
                     value={volCfg.precision}
-                    onChange={(e) =>
-                      patchVolume({ precision: e.target.value as IndicatorPrecision })
-                    }
-                    className="tv-select w-[116px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
-                  >
-                    {PRECISION_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={PRECISION_OPTIONS}
+                    onChange={(val) => patchVolume({ precision: val as IndicatorPrecision })}
+                    className="w-[116px]"
+                  />
                 </div>
                 <div>
                   <TvCheckbox
@@ -812,19 +801,12 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-[var(--text-main)] w-[94px]">Precision</span>
-                  <select
+                  <TvSelect
                     value={smaEmaCfg.precision}
-                    onChange={(e) =>
-                      patchSmaEma({ precision: e.target.value as IndicatorPrecision })
-                    }
-                    className="tv-select w-[116px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
-                  >
-                    {PRECISION_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={PRECISION_OPTIONS}
+                    onChange={(val) => patchSmaEma({ precision: val as IndicatorPrecision })}
+                    className="w-[116px]"
+                  />
                 </div>
                 <div>
                   <TvCheckbox

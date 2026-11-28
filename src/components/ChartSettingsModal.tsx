@@ -21,6 +21,7 @@ import {
 } from '../types/trading';
 import { DEFAULT_CHART_SETTINGS } from '../utils/storage';
 import { ColorPalettePopover } from './ColorPalettePopover';
+import { TvSelect } from './TvSelect';
 import { playAlertChime } from '../utils/binance';
 
 interface ChartSettingsModalProps {
@@ -219,16 +220,14 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
   const themeLineDefault = isDarkMode ? '#2a2e39' : '#e0e3eb';
 
   const chkClass = 'w-4 h-4 rounded accent-[#131722] dark:accent-[var(--accent)] cursor-pointer shrink-0';
-  const selClass =
-    'tv-select h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer';
   const numClass =
-    'h-[34px] w-24 px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[13px] outline-none focus:border-[var(--accent)]';
+    'h-[34px] w-24 px-2.5 rounded-[7px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[13px] outline-none focus:border-[#131722] dark:focus:border-[#d1d4dc] transition-colors';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 select-none pointer-events-none">
       <div
         style={{ transform: `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)` }}
-        className="pointer-events-auto w-full max-w-[660px] h-[560px] max-h-[88vh] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.22)] flex flex-col overflow-hidden"
+        className="pointer-events-auto w-full max-w-[656px] h-[548px] max-h-[88vh] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.22)] flex flex-col overflow-hidden"
         onClick={(e) => {
           e.stopPropagation();
           if (openPickerId) setOpenPickerId(null);
@@ -286,7 +285,7 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
           </nav>
 
           {/* Right Scrollable Settings Content */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 text-[13px] text-[var(--text-main)] space-y-4">
+          <div className="flex-1 overflow-y-auto px-5 py-4 text-[13px] text-[var(--text-main)] space-y-3.5">
             {/* ==================== 1. SYMBOL ==================== */}
             {activeTab === 'symbol' && (
               <>
@@ -413,43 +412,45 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                     Data Modification
                   </div>
 
-                  <div className="grid grid-cols-[120px_190px] items-center gap-3">
+                  <div className="grid grid-cols-[120px_196px] items-center gap-3">
                     <span>Precision</span>
-                    <select
+                    <TvSelect
                       value={settings.symbol.precision}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('symbol', {
-                          precision: e.target.value as ChartSettings['symbol']['precision'],
+                          precision: val as ChartSettings['symbol']['precision'],
                         })
                       }
-                      className={selClass}
-                    >
-                      <option value="default" className="bg-[var(--bg-surface)]">Default</option>
-                      <option value="1" className="bg-[var(--bg-surface)]">1/10 (0.1)</option>
-                      <option value="2" className="bg-[var(--bg-surface)]">1/100 (0.01)</option>
-                      <option value="3" className="bg-[var(--bg-surface)]">1/1000 (0.001)</option>
-                      <option value="4" className="bg-[var(--bg-surface)]">1/10000 (0.0001)</option>
-                      <option value="5" className="bg-[var(--bg-surface)]">1/100000 (0.00001)</option>
-                      <option value="6" className="bg-[var(--bg-surface)]">1/1000000 (0.000001)</option>
-                    </select>
+                      options={[
+                        { value: 'default', label: 'Default' },
+                        { value: '1', label: '1/10 (0.1)' },
+                        { value: '2', label: '1/100 (0.01)' },
+                        { value: '3', label: '1/1000 (0.001)' },
+                        { value: '4', label: '1/10000 (0.0001)' },
+                        { value: '5', label: '1/100000 (0.00001)' },
+                        { value: '6', label: '1/1000000 (0.000001)' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-[120px_190px] items-center gap-3">
+                  <div className="grid grid-cols-[120px_196px] items-center gap-3">
                     <span>Timezone</span>
-                    <select
+                    <TvSelect
                       value={settings.symbol.timezone}
-                      onChange={(e) => updateSection('symbol', { timezone: e.target.value })}
-                      className={selClass}
-                    >
-                      <option value="local" className="bg-[var(--bg-surface)]">Local (System)</option>
-                      <option value="UTC" className="bg-[var(--bg-surface)]">UTC</option>
-                      <option value="Asia/Yangon" className="bg-[var(--bg-surface)]">UTC+6:30 Yangon</option>
-                      <option value="Asia/Bangkok" className="bg-[var(--bg-surface)]">UTC+7 Bangkok</option>
-                      <option value="Asia/Singapore" className="bg-[var(--bg-surface)]">UTC+8 Singapore</option>
-                      <option value="Asia/Tokyo" className="bg-[var(--bg-surface)]">UTC+9 Tokyo</option>
-                      <option value="Europe/London" className="bg-[var(--bg-surface)]">UTC+0 London</option>
-                      <option value="America/New_York" className="bg-[var(--bg-surface)]">UTC-5 New York</option>
-                    </select>
+                      onChange={(val) => updateSection('symbol', { timezone: String(val) })}
+                      options={[
+                        { value: 'local', label: 'Local (System)' },
+                        { value: 'UTC', label: 'UTC' },
+                        { value: 'Asia/Yangon', label: 'UTC+6:30 Yangon' },
+                        { value: 'Asia/Bangkok', label: 'UTC+7 Bangkok' },
+                        { value: 'Asia/Singapore', label: 'UTC+8 Singapore' },
+                        { value: 'Asia/Tokyo', label: 'UTC+9 Tokyo' },
+                        { value: 'Europe/London', label: 'UTC+0 London' },
+                        { value: 'America/New_York', label: 'UTC-5 New York' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
                 </div>
               </>
@@ -482,20 +483,21 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                     />
                     <span>Title</span>
                   </label>
-                  <select
+                  <TvSelect
                     disabled={!settings.statusLine.title}
                     value={settings.statusLine.titleMode}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       updateSection('statusLine', {
-                        titleMode: e.target.value as ChartSettings['statusLine']['titleMode'],
+                        titleMode: val as ChartSettings['statusLine']['titleMode'],
                       })
                     }
-                    className={`${selClass} disabled:opacity-40`}
-                  >
-                    <option value="name" className="bg-[var(--bg-surface)]">Name</option>
-                    <option value="ticker" className="bg-[var(--bg-surface)]">Ticker</option>
-                    <option value="description" className="bg-[var(--bg-surface)]">Description</option>
-                  </select>
+                    options={[
+                      { value: 'name', label: 'Name' },
+                      { value: 'ticker', label: 'Ticker' },
+                      { value: 'description', label: 'Description' },
+                    ]}
+                    className="w-full"
+                  />
                 </div>
 
                 <label className="flex items-center gap-2.5 cursor-pointer">
@@ -673,20 +675,21 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                   <span>Invert scale (Alt + I)</span>
                 </label>
 
-                <div className="grid grid-cols-[175px_170px] items-center gap-3">
+                <div className="grid grid-cols-[175px_172px] items-center gap-3">
                   <span>Scales placement</span>
-                  <select
+                  <TvSelect
                     value={settings.scales.scalesPlacement}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       updateSection('scales', {
-                        scalesPlacement: e.target.value as 'right' | 'left',
+                        scalesPlacement: val as 'right' | 'left',
                       })
                     }
-                    className={selClass}
-                  >
-                    <option value="right" className="bg-[var(--bg-surface)]">Right (Auto)</option>
-                    <option value="left" className="bg-[var(--bg-surface)]">Left</option>
-                  </select>
+                    options={[
+                      { value: 'right', label: 'Right (Auto)' },
+                      { value: 'left', label: 'Left' },
+                    ]}
+                    className="w-full"
+                  />
                 </div>
 
                 <div className="pt-3 border-t border-[var(--border)] space-y-3">
@@ -728,54 +731,57 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                     <span>Countdown to bar close</span>
                   </label>
 
-                  <div className="grid grid-cols-[175px_170px] items-center gap-3">
+                  <div className="grid grid-cols-[175px_172px] items-center gap-3">
                     <span>Symbol</span>
-                    <select
+                    <TvSelect
                       value={settings.scales.symbolLabel}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('scales', {
-                          symbolLabel: e.target.value as ChartSettings['scales']['symbolLabel'],
+                          symbolLabel: val as ChartSettings['scales']['symbolLabel'],
                         })
                       }
-                      className={selClass}
-                    >
-                      <option value="value_line" className="bg-[var(--bg-surface)]">Value, line</option>
-                      <option value="value" className="bg-[var(--bg-surface)]">Value</option>
-                      <option value="hidden" className="bg-[var(--bg-surface)]">Hidden</option>
-                    </select>
+                      options={[
+                        { value: 'value_line', label: 'Value, line' },
+                        { value: 'value', label: 'Value' },
+                        { value: 'hidden', label: 'Hidden' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-[175px_170px] items-center gap-3">
+                  <div className="grid grid-cols-[175px_172px] items-center gap-3">
                     <span>Indicators and financials</span>
-                    <select
+                    <TvSelect
                       value={settings.scales.indicatorsLabel}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('scales', {
-                          indicatorsLabel: e.target.value as 'value' | 'hidden',
+                          indicatorsLabel: val as 'value' | 'hidden',
                         })
                       }
-                      className={selClass}
-                    >
-                      <option value="value" className="bg-[var(--bg-surface)]">Value</option>
-                      <option value="hidden" className="bg-[var(--bg-surface)]">Hidden</option>
-                    </select>
+                      options={[
+                        { value: 'value', label: 'Value' },
+                        { value: 'hidden', label: 'Hidden' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-[175px_170px_auto] items-center gap-2.5">
+                  <div className="grid grid-cols-[175px_172px_auto] items-center gap-2.5">
                     <span>High and low</span>
-                    <select
+                    <TvSelect
                       value={settings.scales.highLowLines}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('scales', {
-                          highLowLines: e.target.value as ChartSettings['scales']['highLowLines'],
+                          highLowLines: val as ChartSettings['scales']['highLowLines'],
                         })
                       }
-                      className={selClass}
-                    >
-                      <option value="hidden" className="bg-[var(--bg-surface)]">Hidden</option>
-                      <option value="value_line" className="bg-[var(--bg-surface)]">Value, line</option>
-                      <option value="value" className="bg-[var(--bg-surface)]">Value</option>
-                    </select>
+                      options={[
+                        { value: 'hidden', label: 'Hidden' },
+                        { value: 'value_line', label: 'Value, line' },
+                        { value: 'value', label: 'Value' },
+                      ]}
+                      className="w-full"
+                    />
                     <SwatchPicker
                       id="sc-hl"
                       color={settings.scales.highLowColor}
@@ -787,20 +793,21 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                     />
                   </div>
 
-                  <div className="grid grid-cols-[175px_170px_auto] items-center gap-2.5">
+                  <div className="grid grid-cols-[175px_172px_auto] items-center gap-2.5">
                     <span>Bid and ask</span>
-                    <select
+                    <TvSelect
                       value={settings.scales.bidAskLines}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('scales', {
-                          bidAskLines: e.target.value as 'hidden' | 'value_line',
+                          bidAskLines: val as 'hidden' | 'value_line',
                         })
                       }
-                      className={selClass}
-                    >
-                      <option value="hidden" className="bg-[var(--bg-surface)]">Hidden</option>
-                      <option value="value_line" className="bg-[var(--bg-surface)]">Value, line</option>
-                    </select>
+                      options={[
+                        { value: 'hidden', label: 'Hidden' },
+                        { value: 'value_line', label: 'Value, line' },
+                      ]}
+                      className="w-full"
+                    />
                     <div className="flex items-center gap-1.5">
                       <SwatchPicker
                         id="sc-bid"
@@ -841,38 +848,40 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                     <span>Day of week on labels</span>
                   </label>
 
-                  <div className="grid grid-cols-[175px_170px] items-center gap-3">
+                  <div className="grid grid-cols-[175px_172px] items-center gap-3">
                     <span>Date format</span>
-                    <select
+                    <TvSelect
                       value={settings.scales.dateFormat}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('scales', {
-                          dateFormat: e.target.value as ChartSettings['scales']['dateFormat'],
+                          dateFormat: val as ChartSettings['scales']['dateFormat'],
                         })
                       }
-                      className={selClass}
-                    >
-                      <option value="short" className="bg-[var(--bg-surface)]">Mon 29 Sep &apos;97</option>
-                      <option value="iso" className="bg-[var(--bg-surface)]">YYYY-MM-DD</option>
-                      <option value="dmy" className="bg-[var(--bg-surface)]">DD/MM/YYYY</option>
-                      <option value="mdy" className="bg-[var(--bg-surface)]">MM/DD/YYYY</option>
-                    </select>
+                      options={[
+                        { value: 'short', label: "Mon 29 Sep '97" },
+                        { value: 'iso', label: 'YYYY-MM-DD' },
+                        { value: 'dmy', label: 'DD/MM/YYYY' },
+                        { value: 'mdy', label: 'MM/DD/YYYY' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
-                  <div className="grid grid-cols-[175px_170px] items-center gap-3">
+                  <div className="grid grid-cols-[175px_172px] items-center gap-3">
                     <span>Time hours format</span>
-                    <select
+                    <TvSelect
                       value={settings.scales.timeHoursFormat}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('scales', {
-                          timeHoursFormat: e.target.value as '24' | '12',
+                          timeHoursFormat: val as '24' | '12',
                         })
                       }
-                      className={selClass}
-                    >
-                      <option value="24" className="bg-[var(--bg-surface)]">24-hours</option>
-                      <option value="12" className="bg-[var(--bg-surface)]">12-hours</option>
-                    </select>
+                      options={[
+                        { value: '24', label: '24-hours' },
+                        { value: '12', label: '12-hours' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
                 </div>
               </>
@@ -887,18 +896,19 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
 
                 <div className="grid grid-cols-[160px_145px_auto] items-center gap-2.5">
                   <span>Background</span>
-                  <select
+                  <TvSelect
                     value={settings.canvas.backgroundType}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       updateSection('canvas', {
-                        backgroundType: e.target.value as 'solid' | 'gradient',
+                        backgroundType: val as 'solid' | 'gradient',
                       })
                     }
-                    className={selClass}
-                  >
-                    <option value="solid" className="bg-[var(--bg-surface)]">Solid</option>
-                    <option value="gradient" className="bg-[var(--bg-surface)]">Gradient</option>
-                  </select>
+                    options={[
+                      { value: 'solid', label: 'Solid' },
+                      { value: 'gradient', label: 'Gradient' },
+                    ]}
+                    className="w-full"
+                  />
                   <div className="flex items-center gap-1.5">
                     <SwatchPicker
                       id="cv-bg1"
@@ -981,36 +991,38 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                     onChange={(c) => updateSection('canvas', { crosshairColor: c })}
                     title="Crosshair Color"
                   />
-                  <select
+                  <TvSelect
                     value={settings.canvas.crosshairStyle}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       updateSection('canvas', {
-                        crosshairStyle: e.target.value as DrawingLineStyle,
+                        crosshairStyle: val as DrawingLineStyle,
                       })
                     }
-                    className={selClass}
-                  >
-                    <option value="dashed" className="bg-[var(--bg-surface)]">Dashed</option>
-                    <option value="solid" className="bg-[var(--bg-surface)]">Solid</option>
-                    <option value="dotted" className="bg-[var(--bg-surface)]">Dotted</option>
-                  </select>
+                    options={[
+                      { value: 'dashed', label: 'Dashed' },
+                      { value: 'solid', label: 'Solid' },
+                      { value: 'dotted', label: 'Dotted' },
+                    ]}
+                    className="w-full"
+                  />
                 </div>
 
                 <div className="grid grid-cols-[160px_145px_auto] items-center gap-2.5">
                   <span>Watermark</span>
-                  <select
+                  <TvSelect
                     value={settings.canvas.watermarkMode}
-                    onChange={(e) =>
+                    onChange={(val) =>
                       updateSection('canvas', {
-                        watermarkMode: e.target.value as ChartSettings['canvas']['watermarkMode'],
+                        watermarkMode: val as ChartSettings['canvas']['watermarkMode'],
                       })
                     }
-                    className={selClass}
-                  >
-                    <option value="off" className="bg-[var(--bg-surface)]">Off</option>
-                    <option value="symbol" className="bg-[var(--bg-surface)]">Symbol</option>
-                    <option value="replay" className="bg-[var(--bg-surface)]">Replay mode</option>
-                  </select>
+                    options={[
+                      { value: 'off', label: 'Off' },
+                      { value: 'symbol', label: 'Symbol' },
+                      { value: 'replay', label: 'Replay mode' },
+                    ]}
+                    className="w-full"
+                  />
                   <SwatchPicker
                     id="cv-wm"
                     color={settings.canvas.watermarkColor}
@@ -1038,21 +1050,20 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                       onChange={(c) => updateSection('canvas', { scaleTextColor: c })}
                       title="Scale Text Color"
                     />
-                    <select
+                    <TvSelect
                       value={settings.canvas.scaleFontSize}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('canvas', {
-                          scaleFontSize: parseInt(e.target.value, 10),
+                          scaleFontSize: Number(val),
                         })
                       }
-                      className={selClass}
-                    >
-                      {[10, 11, 12, 13, 14, 16].map((sz) => (
-                        <option key={sz} value={sz} className="bg-[var(--bg-surface)]">
-                          {sz}
-                        </option>
-                      ))}
-                    </select>
+                      options={[10, 11, 12, 13, 14, 16].map((sz) => ({
+                        value: sz,
+                        label: String(sz),
+                      }))}
+                      mono
+                      className="w-full"
+                    />
                   </div>
 
                   <div className="grid grid-cols-[160px_auto] items-center gap-2.5">
@@ -1280,36 +1291,38 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
 
                   <div className="grid grid-cols-[140px_150px] items-center gap-3 ml-6">
                     <span>Positions</span>
-                    <select
+                    <TvSelect
                       disabled={!settings.trading.pnlValueEnabled}
                       value={settings.trading.pnlPositionMode}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('trading', {
-                          pnlPositionMode: e.target.value as 'money' | 'percent',
+                          pnlPositionMode: val as 'money' | 'percent',
                         })
                       }
-                      className={`${selClass} disabled:opacity-40`}
-                    >
-                      <option value="money" className="bg-[var(--bg-surface)]">Money</option>
-                      <option value="percent" className="bg-[var(--bg-surface)]">Percent</option>
-                    </select>
+                      options={[
+                        { value: 'money', label: 'Money' },
+                        { value: 'percent', label: 'Percent' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
                   <div className="grid grid-cols-[140px_150px] items-center gap-3 ml-6">
                     <span>Brackets</span>
-                    <select
+                    <TvSelect
                       disabled={!settings.trading.pnlValueEnabled}
                       value={settings.trading.pnlBracketMode}
-                      onChange={(e) =>
+                      onChange={(val) =>
                         updateSection('trading', {
-                          pnlBracketMode: e.target.value as 'money' | 'percent',
+                          pnlBracketMode: val as 'money' | 'percent',
                         })
                       }
-                      className={`${selClass} disabled:opacity-40`}
-                    >
-                      <option value="money" className="bg-[var(--bg-surface)]">Money</option>
-                      <option value="percent" className="bg-[var(--bg-surface)]">Percent</option>
-                    </select>
+                      options={[
+                        { value: 'money', label: 'Money' },
+                        { value: 'percent', label: 'Percent' },
+                      ]}
+                      className="w-full"
+                    />
                   </div>
 
                   <label className="flex items-center gap-2.5 cursor-pointer">
@@ -1469,17 +1482,18 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
                     />
                     <span>Ideas</span>
                   </label>
-                  <select
+                  <TvSelect
                     disabled={!settings.events.ideas}
                     value={settings.events.ideasFilter}
-                    onChange={(e) =>
-                      updateSection('events', { ideasFilter: e.target.value as 'all' | 'mine' })
+                    onChange={(val) =>
+                      updateSection('events', { ideasFilter: val as 'all' | 'mine' })
                     }
-                    className={`${selClass} disabled:opacity-40`}
-                  >
-                    <option value="all" className="bg-[var(--bg-surface)]">All ideas</option>
-                    <option value="mine" className="bg-[var(--bg-surface)]">My ideas</option>
-                  </select>
+                    options={[
+                      { value: 'all', label: 'All ideas' },
+                      { value: 'mine', label: 'My ideas' },
+                    ]}
+                    className="w-full"
+                  />
                 </div>
 
                 <label className="flex items-center gap-2.5 cursor-pointer">
@@ -1555,15 +1569,19 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
         </div>
 
         {/* Footer: Template ⌄ | Cancel | Ok */}
-        <div className="px-5 py-3.5 border-t border-[var(--border)] flex items-center justify-between bg-[var(--bg-elevated)] shrink-0">
+        <div className="px-5 py-3.5 border-t border-[var(--border)] flex items-center justify-between bg-[var(--bg-surface)] shrink-0">
           <div className="relative">
             <button
               type="button"
               onClick={() => setTemplateMenuOpen((v) => !v)}
-              className="h-8 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-xs font-medium text-[var(--text-main)] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1.5 cursor-pointer"
+              className="h-[34px] px-3 rounded-[7px] border border-[var(--border)] bg-[var(--bg-surface)] text-[13px] font-medium text-[var(--text-main)] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1.5 cursor-pointer"
             >
               <span>Template</span>
-              <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-[var(--text-muted)] transition-transform duration-150 ${
+                  templateMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
             </button>
 
             {templateMenuOpen && (
@@ -1639,18 +1657,18 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={handleCancel}
-              className="h-8 px-4 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-main)] hover:bg-[var(--bg-hover)] cursor-pointer"
+              className="h-[34px] px-4 rounded-[7px] border border-[#131722] dark:border-[var(--border)] bg-[var(--bg-surface)] text-[13px] font-medium text-[var(--text-main)] hover:bg-[var(--bg-hover)] cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="h-8 px-4 rounded-md bg-[#131722] dark:bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 cursor-pointer"
+              className="h-[34px] px-4 rounded-[7px] bg-[#1f2229] dark:bg-[var(--accent)] text-white text-[13px] font-semibold hover:opacity-90 cursor-pointer"
             >
               Ok
             </button>
