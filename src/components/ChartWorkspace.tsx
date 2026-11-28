@@ -2690,26 +2690,6 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         }
         ctx.fillRect(padX, headerH, cssW, cssH);
 
-        // Optional Chart Watermark
-        if (chartSettings.canvas.watermarkMode !== 'off') {
-          const placement = chartSettings.scales.scalesPlacement;
-          const scW = chart.priceScale(placement).width() || rightScaleWidth || 70;
-          const plotCx =
-            placement === 'left' ? padX + scW + (cssW - scW) / 2 : padX + (cssW - scW) / 2;
-          const plotCy = headerH + (cssH - 26) / 2;
-          ctx.save();
-          ctx.fillStyle = chartSettings.canvas.watermarkColor || 'rgba(120,123,134,0.12)';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.font = `700 44px ${TV_SNAP_FONT}`;
-          const wmTitle =
-            chartSettings.canvas.watermarkMode === 'replay'
-              ? `${symbol} · REPLAY`
-              : `${symbol}, ${interval.toUpperCase()}`;
-          ctx.fillText(wmTitle, plotCx, plotCy);
-          ctx.restore();
-        }
-
         // 4. Composite HiDPI chart layers in exact visual z-order
         if (cloudCanvasRef.current) {
           ctx.drawImage(cloudCanvasRef.current, padX, headerH, cssW, cssH);
