@@ -148,7 +148,144 @@ function drawPriceTag(ctx: CanvasRenderingContext2D, x: number, y: number, price
   ctx.restore();
 }
 
-// Render custom Text attached to a line segment (rotated along line angle & aligned Top/Middle/Bottom + Left/Center/Right)
+// Compute normalized left->right line text metrics & stroke line with automatic clean gap when alignV === 'middle'
+function strokeLineWithText(
+  ctx: CanvasRenderingContext2D,
+  s: DrawingObject,
+  lineStart: ScreenPoint,
+  lineEnd: ScreenPoint,
+  anchorA: ScreenPoint,
+  anchorB: ScreenPoint,
+  edgeInset = 8
+) {
+  const hasText = Boolean(s.text && s.text.trim());
+  const defaultAlignV = s.type === 'hline' ? 'middle' : 'top';
+  const alignV = s.textAlignV || defaultAlignV;
+  const alignH = s.textAlignH || 'center';
+
+  // Ensure readable direction (left-to-right; for perfectly vertical lines, bottom-to-top)
+  let pLeft = anchorA;
+  let pRight = anchorB;
+  const rawDx = anchorB.x - anchorA.x;
+  const rawDy = anchorB.y - anchorA.y;
+  if (rawDx < -0.5 || (Math.abs(rawDx) <= 0.5 && rawDy > 0)) {
+    pLeft = anchorB;
+    pRight = anchorA;
+  }
+
+  const dx = pRight.x - pLeft.x;
+  const dy = pRight.y - pLeft.y;
+  const len = Math.hypot(dx, dy);
+
+  if (!hasText || len < 1) {
+    ctx.beginPath();
+    ctx.moveTo(lineStart.x, lineStart.y);
+    ctx.lineTo(lineEnd.x, lineEnd.y);
+    ctx.stroke();
+    return;
+  }
+
+  const ux = dx / len;
+  const uy = dy / len;
+  const angle = Math.atan2(uy, ux);
+  const lines = s.text!.split('\n');
+  const fontSize = s.fontSize || (s.type === 'hline' ? 12 : 14);
+  const weight = s.fontBold ? '700' : '500';
+  const italic = s.fontItalic ? 'italic ' : '';
+  const fontStr = `${italic}${weight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
+  const textColor = s.textColor || s.color || '#2962ff';
+
+  ctx.save();
+  ctx.font = fontStr;
+  const maxW = Math.max(...lines.map((l) => ctx.measureText(l).width));
+  ctx.restore();
+
+  const inset = Math.min(edgeInset, Math.max(4, len * 0.15));
+  let textAnchorS = len / 2;
+  let gapStartS = len / 2 - maxW / 2 - 6;
+  let gapEndS = len / 2 + maxW / 2 + 6;
+  let canvasAlign: CanvasTextAlign = 'center';
+
+  if (alignH === 'left') {
+    textAnchorS = inset;
+    canvasAlign = 'left';
+    gapStartS = textAnchorS - 5;
+    gapEndS = textAnchorS + maxW + 5;
+  } else if (alignH === 'right') {
+    textAnchorS = len - inset;
+    canvasAlign = 'right';
+    gapStartS = textAnchorS - maxW - 5;
+    gapEndS = textAnchorS + 5;
+  }
+
+  const ptAt = (distAlong: number): ScreenPoint => ({
+    x: pLeft.x + ux * distAlong,
+    y: pLeft.y + uy * distAlong,
+  });
+
+  // Project full lineStart -> lineEnd onto the pLeft -> pRight axis
+  const s0 = (lineStart.x - pLeft.x) * ux + (lineStart.y - pLeft.y) * uy;
+  const s1 = (lineEnd.x - pLeft.x) * ux + (lineEnd.y - pLeft.y) * uy;
+  const minS = Math.min(s0, s1);
+  const maxS = Math.max(s0, s1);
+
+  // Stroke line (with crisp clean break around text when vertical alignment is Middle!)
+  if (alignV === 'middle') {
+    const seg1End = Math.min(maxS, gapStartS);
+    if (seg1End > minS + 0.5) {
+      const a1 = ptAt(minS);
+      const b1 = ptAt(seg1End);
+      ctx.beginPath();
+      ctx.moveTo(a1.x, a1.y);
+      ctx.lineTo(b1.x, b1.y);
+      ctx.stroke();
+    }
+    const seg2Start = Math.max(minS, gapEndS);
+    if (maxS > seg2Start + 0.5) {
+      const a2 = ptAt(seg2Start);
+      const b2 = ptAt(maxS);
+      ctx.beginPath();
+      ctx.moveTo(a2.x, a2.y);
+      ctx.lineTo(b2.x, b2.y);
+      ctx.stroke();
+    }
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(lineStart.x, lineStart.y);
+    ctx.lineTo(lineEnd.x, lineEnd.y);
+    ctx.stroke();
+  }
+
+  // Draw Text positioned crisply at Top / Middle / Bottom x Left / Center / Right
+  const anchorPt = ptAt(textAnchorS);
+  const lineH = fontSize * 1.24;
+  const gapY = (s.lineWidth || 2) / 2 + 4;
+
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.translate(anchorPt.x, anchorPt.y);
+  ctx.rotate(angle);
+  ctx.font = fontStr;
+  ctx.fillStyle = textColor;
+  ctx.textAlign = canvasAlign;
+
+  if (alignV === 'top') {
+    ctx.textBaseline = 'bottom';
+    const startY = -gapY - (lines.length - 1) * lineH;
+    lines.forEach((line, idx) => ctx.fillText(line, 0, startY + idx * lineH));
+  } else if (alignV === 'bottom') {
+    ctx.textBaseline = 'top';
+    const startY = gapY;
+    lines.forEach((line, idx) => ctx.fillText(line, 0, startY + idx * lineH));
+  } else {
+    ctx.textBaseline = 'middle';
+    const startY = -((lines.length - 1) * lineH) / 2;
+    lines.forEach((line, idx) => ctx.fillText(line, 0, startY + idx * lineH));
+  }
+  ctx.restore();
+}
+
+// Render custom Text attached to a line segment (used for channels where stroke is already drawn)
 function drawLineText(ctx: CanvasRenderingContext2D, s: DrawingObject, a: ScreenPoint, b: ScreenPoint) {
   if (!s.text || !s.text.trim()) return;
   const lines = s.text.split('\n');
@@ -159,7 +296,6 @@ function drawLineText(ctx: CanvasRenderingContext2D, s: DrawingObject, a: Screen
   const alignH = s.textAlignH || 'center';
   const alignV = s.textAlignV || 'top';
 
-  // Ensure angle is readable left-to-right
   let pLeft = a;
   let pRight = b;
   if (a.x > b.x) {
@@ -169,36 +305,42 @@ function drawLineText(ctx: CanvasRenderingContext2D, s: DrawingObject, a: Screen
   const dx = pRight.x - pLeft.x;
   const dy = pRight.y - pLeft.y;
   const len = Math.hypot(dx, dy);
-  const angle = Math.atan2(dy, dx);
+  if (len < 1) return;
+  const ux = dx / len;
+  const uy = dy / len;
+  const angle = Math.atan2(uy, ux);
 
-  const t = alignH === 'left' ? 0.12 : alignH === 'right' ? 0.88 : 0.5;
-  const ax = pLeft.x + dx * t;
-  const ay = pLeft.y + dy * t;
+  const inset = Math.min(8, Math.max(4, len * 0.15));
+  const anchorS = alignH === 'left' ? inset : alignH === 'right' ? len - inset : len / 2;
+  const ax = pLeft.x + ux * anchorS;
+  const ay = pLeft.y + uy * anchorS;
+  const lineH = fontSize * 1.24;
+  const gapY = (s.lineWidth || 2) / 2 + 4;
 
   ctx.save();
+  ctx.setLineDash([]);
   ctx.translate(ax, ay);
   ctx.rotate(angle);
-  ctx.font = `${italic}${weight} ${fontSize}px "Plus Jakarta Sans", sans-serif`;
+  ctx.font = `${italic}${weight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
   ctx.fillStyle = textColor;
   ctx.textAlign = alignH === 'left' ? 'left' : alignH === 'right' ? 'right' : 'center';
 
-  const lineH = fontSize * 1.25;
-  const totalH = lines.length * lineH;
-  let yOffset = 0;
-  if (alignV === 'top') yOffset = -8 - (lines.length - 1) * lineH;
-  else if (alignV === 'bottom') yOffset = fontSize + 6;
-  else yOffset = -totalH / 2 + fontSize * 0.85;
-
-  // Keep slight padding from ends if left/right aligned
-  const xPad = alignH === 'left' && len > 40 ? 6 : alignH === 'right' && len > 40 ? -6 : 0;
-
-  lines.forEach((line, idx) => {
-    ctx.fillText(line, xPad, yOffset + idx * lineH);
-  });
+  if (alignV === 'top') {
+    ctx.textBaseline = 'bottom';
+    const startY = -gapY - (lines.length - 1) * lineH;
+    lines.forEach((line, idx) => ctx.fillText(line, 0, startY + idx * lineH));
+  } else if (alignV === 'bottom') {
+    ctx.textBaseline = 'top';
+    lines.forEach((line, idx) => ctx.fillText(line, 0, gapY + idx * lineH));
+  } else {
+    ctx.textBaseline = 'middle';
+    const startY = -((lines.length - 1) * lineH) / 2;
+    lines.forEach((line, idx) => ctx.fillText(line, 0, startY + idx * lineH));
+  }
   ctx.restore();
 }
 
-// Render custom Text attached to a horizontal box / rectangle / hline
+// Render custom Text attached to a rectangle / ellipse box
 function drawBoxText(
   ctx: CanvasRenderingContext2D,
   s: DrawingObject,
@@ -214,22 +356,30 @@ function drawBoxText(
   const italic = s.fontItalic ? 'italic ' : '';
   const textColor = s.textColor || s.color || '#2962ff';
   const alignH = s.textAlignH || 'center';
-  const alignV = s.textAlignV || 'top';
+  const alignV = s.textAlignV || 'middle';
 
   const x =
     alignH === 'left' ? leftX + 8 : alignH === 'right' ? rightX - 8 : (leftX + rightX) / 2;
-  const lineH = fontSize * 1.25;
-  let y = topY - 8 - (lines.length - 1) * lineH;
-  if (alignV === 'middle') y = (topY + bottomY) / 2 - ((lines.length - 1) * lineH) / 2 + fontSize * 0.35;
-  else if (alignV === 'bottom') y = bottomY + fontSize + 4;
+  const lineH = fontSize * 1.24;
 
   ctx.save();
-  ctx.font = `${italic}${weight} ${fontSize}px "Plus Jakarta Sans", sans-serif`;
+  ctx.setLineDash([]);
+  ctx.font = `${italic}${weight} ${fontSize}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
   ctx.fillStyle = textColor;
   ctx.textAlign = alignH === 'left' ? 'left' : alignH === 'right' ? 'right' : 'center';
-  lines.forEach((line, idx) => {
-    ctx.fillText(line, x, y + idx * lineH);
-  });
+
+  if (alignV === 'top') {
+    ctx.textBaseline = 'top';
+    lines.forEach((line, idx) => ctx.fillText(line, x, topY + 6 + idx * lineH));
+  } else if (alignV === 'bottom') {
+    ctx.textBaseline = 'bottom';
+    const startY = bottomY - 6 - (lines.length - 1) * lineH;
+    lines.forEach((line, idx) => ctx.fillText(line, x, startY + idx * lineH));
+  } else {
+    ctx.textBaseline = 'middle';
+    const startY = (topY + bottomY) / 2 - ((lines.length - 1) * lineH) / 2;
+    lines.forEach((line, idx) => ctx.fillText(line, x, startY + idx * lineH));
+  }
   ctx.restore();
 }
 
@@ -524,14 +674,18 @@ export function renderDrawingObject(
       const y = bridge.priceToY(s.price);
       if (y === null) break;
       if (!s.lineStyle) ctx.setLineDash([]);
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
-      ctx.stroke();
-      ctx.setLineDash([]);
       const pLeft = bridge.plotLeft ?? 0;
       const pRight = pLeft + (bridge.plotWidth ?? width - 70);
-      drawBoxText(ctx, s, pLeft + 14, pRight - 14, y, y);
+      strokeLineWithText(
+        ctx,
+        s,
+        { x: pLeft, y },
+        { x: pRight, y },
+        { x: pLeft, y },
+        { x: pRight, y },
+        12
+      );
+      ctx.setLineDash([]);
       if (showHandles) drawHandleDot(ctx, getHlineHandleX(bridge), y, isSelected);
       break;
     }
@@ -540,12 +694,18 @@ export function renderDrawingObject(
       if (!s.p1) break;
       const a = bridge.ptToScreen(s.p1);
       if (!a) break;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(width, a.y);
-      ctx.stroke();
+      const pLeft = bridge.plotLeft ?? 0;
+      const pRight = pLeft + (bridge.plotWidth ?? width - 70);
+      strokeLineWithText(
+        ctx,
+        s,
+        a,
+        { x: pRight, y: a.y },
+        a,
+        { x: pRight, y: a.y },
+        10
+      );
       ctx.setLineDash([]);
-      drawBoxText(ctx, s, a.x, width - 80, a.y, a.y);
       if (showHandles) drawHandleDot(ctx, a.x, a.y, isSelected);
       break;
     }
@@ -554,10 +714,16 @@ export function renderDrawingObject(
       if (s.time === undefined) break;
       const x = bridge.timeToX(s.time);
       if (x === null) break;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
+      const plotBottom = Math.max(40, height - 28);
+      strokeLineWithText(
+        ctx,
+        s,
+        { x, y: 0 },
+        { x, y: plotBottom },
+        { x, y: plotBottom },
+        { x, y: 0 },
+        14
+      );
       ctx.setLineDash([]);
       const d = new Date(s.time * 1000);
       const lbl = `${d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
@@ -576,12 +742,21 @@ export function renderDrawingObject(
       if (!s.p1) break;
       const a = bridge.ptToScreen(s.p1);
       if (!a) break;
+      const pLeft = bridge.plotLeft ?? 0;
+      const pRight = pLeft + (bridge.plotWidth ?? width - 70);
       ctx.beginPath();
-      ctx.moveTo(0, a.y);
-      ctx.lineTo(width, a.y);
       ctx.moveTo(a.x, 0);
       ctx.lineTo(a.x, height);
       ctx.stroke();
+      strokeLineWithText(
+        ctx,
+        s,
+        { x: pLeft, y: a.y },
+        { x: pRight, y: a.y },
+        { x: pLeft, y: a.y },
+        { x: pRight, y: a.y },
+        12
+      );
       ctx.setLineDash([]);
       if (s.showPriceLabels !== false) {
         const lbl = fmtPrice(s.p1.price);
@@ -624,10 +799,7 @@ export function renderDrawingObject(
           ? { x: a.x + dx * scale, y: a.y + dy * scale }
           : b;
 
-      ctx.beginPath();
-      ctx.moveTo(startPt.x, startPt.y);
-      ctx.lineTo(endPt.x, endPt.y);
-      ctx.stroke();
+      strokeLineWithText(ctx, s, startPt, endPt, a, b, 8);
 
       if (s.leftEnd === 'arrow' && ext !== 'left' && ext !== 'both') {
         drawArrowHead(ctx, b.x, b.y, a.x, a.y, 11);
@@ -656,7 +828,6 @@ export function renderDrawingObject(
         drawPriceTag(ctx, b.x, b.y, s.p2.price, color);
       }
 
-      drawLineText(ctx, s, a, b);
       drawLineStats(ctx, s, a, b, bridge, isSelected);
 
       // Endpoints ONLY appear when selected or hovered; while actively drawing (draft), only p1 shows the blue circle!
@@ -674,10 +845,7 @@ export function renderDrawingObject(
       const a = bridge.ptToScreen(s.p1);
       const b = bridge.ptToScreen(s.p2);
       if (!a || !b) break;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      strokeLineWithText(ctx, s, a, b, a, b, 8);
 
       const refLen = Math.min(90, Math.max(40, Math.hypot(b.x - a.x, b.y - a.y) * 0.5));
       const dir = b.x >= a.x ? 1 : -1;
@@ -706,7 +874,6 @@ export function renderDrawingObject(
       );
       ctx.restore();
 
-      drawLineText(ctx, s, a, b);
       if (showHandles) {
         drawHandleDot(ctx, a.x, a.y, isSelected);
         if (!isDraft) drawHandleDot(ctx, b.x, b.y, isSelected);
@@ -1131,12 +1298,8 @@ export function renderDrawingObject(
       const a = bridge.ptToScreen(s.p1);
       const b = bridge.ptToScreen(s.p2);
       if (!a || !b) break;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
+      strokeLineWithText(ctx, s, a, b, a, b, 10);
       drawArrowHead(ctx, a.x, a.y, b.x, b.y, 11);
-      drawLineText(ctx, s, a, b);
       if (showHandles) {
         drawHandleDot(ctx, a.x, a.y, isSelected);
         if (!isDraft) drawHandleDot(ctx, b.x, b.y, isSelected);

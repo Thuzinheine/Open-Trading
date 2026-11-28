@@ -127,9 +127,7 @@ export default function App() {
 
   const initialToolPrefs = useMemo(() => loadToolPrefs(), []);
   const [magnetMode, setMagnetMode] = useState<MagnetMode>(initialToolPrefs.magnetMode);
-  const [stayInDrawingMode, setStayInDrawingMode] = useState<boolean>(
-    initialToolPrefs.stayInDrawingMode
-  );
+  const [stayInDrawingMode, setStayInDrawingMode] = useState<boolean>(false);
   const [lockDrawings, setLockDrawings] = useState<boolean>(initialToolPrefs.lockDrawings);
 
   // Chart state (restores last opened coin & timeframe)

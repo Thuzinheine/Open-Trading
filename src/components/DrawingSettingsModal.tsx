@@ -136,6 +136,32 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
   const [showSaveTplInput, setShowSaveTplInput] = useState(false);
   const [lineColorPickerOpen, setLineColorPickerOpen] = useState(false);
   const [textColorPickerOpen, setTextColorPickerOpen] = useState(false);
+  const [modalOffset, setModalOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragRef = React.useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      setModalOffset({
+        x: dragRef.current.origX + (e.clientX - dragRef.current.startX),
+        y: dragRef.current.origY + (e.clientY - dragRef.current.startY),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   useEffect(() => {
     if (open && drawing) {
@@ -146,6 +172,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
       setShowSaveTplInput(false);
       setLineColorPickerOpen(false);
       setTextColorPickerOpen(false);
+      setModalOffset({ x: 0, y: 0 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, drawing?.id, initialTab]);
@@ -270,15 +297,26 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center px-4 select-none"
-      onClick={handleCancel}
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 select-none pointer-events-none"
     >
       <div
-        className="w-full max-w-[420px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-2xl overflow-visible flex flex-col"
+        style={{ transform: `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)` }}
+        className="pointer-events-auto w-full max-w-[420px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.22)] overflow-visible flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+        {/* Draggable Header */}
+        <div
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).closest('button, input')) return;
+            dragRef.current = {
+              startX: e.clientX,
+              startY: e.clientY,
+              origX: modalOffset.x,
+              origY: modalOffset.y,
+            };
+          }}
+          className="px-5 pt-4 pb-2 flex items-center justify-between cursor-move"
+        >
           <div className="flex items-center gap-2 min-w-0">
             {editingTitle ? (
               <input
@@ -749,7 +787,12 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 <span className="text-[var(--text-main)]">Text alignment</span>
                 <div className="flex items-center gap-2">
                   <select
-                    value={drawing.textAlignV || (drawing.type === 'hline' ? 'middle' : 'top')}
+                    value={
+                      drawing.textAlignV ||
+                      (drawing.type === 'hline' || drawing.type === 'rect' || drawing.type === 'ellipse'
+                        ? 'middle'
+                        : 'top')
+                    }
                     onChange={(e) => patch({ textAlignV: e.target.value as TextAlignV })}
                     className="h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none cursor-pointer"
                   >

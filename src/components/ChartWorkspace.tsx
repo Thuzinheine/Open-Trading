@@ -321,6 +321,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const drawStageRef = useRef<0 | 1 | 2>(0); // 0 = idle, 1 = moving to p2, 2 = moving to p3
     const tempShapeRef = useRef<DrawingObject | null>(null);
     const drawCursorRef = useRef<{ x: number; y: number } | null>(null);
+    const drawStartScreenRef = useRef<{ x: number; y: number } | null>(null);
     const lastPointerClientRef = useRef<{ clientX: number; clientY: number } | null>(null);
     const shiftPressedRef = useRef(false);
     const zoomBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
@@ -372,7 +373,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       new Date().toISOString().slice(0, 10)
     );
     const [activeDateRange, setActiveDateRange] = useState<string>('');
-    const [indExpanded, setIndExpanded] = useState(true);
+    const [indExpanded, setIndExpanded] = useState(false);
     const [hoverBar, setHoverBar] = useState<CandleBar | null>(null);
     const [hoverCursor, setHoverCursor] = useState<string>('');
     const [drawingHint, setDrawingHint] = useState<string | null>(null);
@@ -1240,6 +1241,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         priceScaleId: 'vol',
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
 
       const sma1Series = chart.addLineSeries({
@@ -1247,6 +1249,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         visible: false,
       });
       const sma2Series = chart.addLineSeries({
@@ -1254,6 +1257,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         visible: false,
       });
       const sma3Series = chart.addLineSeries({
@@ -1261,6 +1265,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         visible: false,
       });
       const ema1Series = chart.addLineSeries({
@@ -1268,18 +1273,21 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
       const ema2Series = chart.addLineSeries({
         color: '#1d54d4',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
       });
       const ema3Series = chart.addLineSeries({
         color: '#81c784',
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         visible: false,
       });
 
@@ -1288,6 +1296,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         visible: false,
       });
       const bbMidSeries = chart.addLineSeries({
@@ -1296,6 +1305,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineStyle: LineStyle.Dashed,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         visible: false,
       });
       const bbLowerSeries = chart.addLineSeries({
@@ -1303,6 +1313,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         lineWidth: 1,
         priceLineVisible: false,
         lastValueVisible: false,
+        crosshairMarkerVisible: false,
         visible: false,
       });
 
@@ -1557,6 +1568,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         color: indicators.rsi.color,
         lineWidth: 2,
         priceLineVisible: false,
+        crosshairMarkerVisible: false,
       });
 
       rsiSeries.createPriceLine({
@@ -3244,6 +3256,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       if (!tempShapeRef.current || drawStageRef.current === 0) {
         isDrawingRef.current = true;
         drawStageRef.current = 1;
+        drawStartScreenRef.current = { x: sx, y: sy };
         tempShapeRef.current = {
           id: `d-${Date.now()}`,
           type: activeTool as DrawingObject['type'],
@@ -3340,7 +3353,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           return;
         }
 
-        // Only freehand Brush & Highlighter finalize on mouseup; 2-point & 3-point tools use Click-Move-Click!
+        // Complete freehand Brush & Highlighter on mouseup
         const shape = tempShapeRef.current;
         if (
           isDrawingRef.current &&
@@ -3350,7 +3363,48 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           isDrawingRef.current = false;
           tempShapeRef.current = null;
           drawStageRef.current = 0;
+          drawStartScreenRef.current = null;
           finalizeDrawing(shape);
+          return;
+        }
+
+        // Also support TradingView Press-Drag-Release for 2-point tools (Trendline, Fib, Rect, etc.):
+        // If user dragged >= 12px before releasing mouse, finalize immediately & return to free cursor!
+        // If user just clicked (< 12px), keep drawStageRef === 1 for Click-Move-Click!
+        if (
+          isDrawingRef.current &&
+          drawStageRef.current === 1 &&
+          shape &&
+          !THREE_POINT_TOOLS.includes(shape.type as DrawingTool) &&
+          shape.type !== 'path' &&
+          drawStartScreenRef.current &&
+          drawCursorRef.current
+        ) {
+          const dragDist = Math.hypot(
+            drawCursorRef.current.x - drawStartScreenRef.current.x,
+            drawCursorRef.current.y - drawStartScreenRef.current.y
+          );
+          drawStartScreenRef.current = null;
+          if (dragDist >= 12) {
+            isDrawingRef.current = false;
+            tempShapeRef.current = null;
+            drawStageRef.current = 0;
+            const endCursor = drawCursorRef.current;
+            drawCursorRef.current = null;
+            if (shape.type === 'callout' && shape.p1 && shape.p2) {
+              setTextPrompt({
+                x: endCursor.x,
+                y: endCursor.y,
+                mode: 'callout',
+                p1: shape.p1,
+                p2: shape.p2,
+                value: '',
+              });
+              redrawOverlay();
+              return;
+            }
+            finalizeDrawing(shape);
+          }
         }
       };
 
@@ -3853,16 +3907,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           onDoubleClickCapture={handleWrapperDoubleClickCapture}
           onMouseMove={handleWrapperMouseMove}
           onMouseLeave={handleWrapperMouseLeave}
-          style={{
-            ...chartBgStyle,
-            ...(hoverCursor
-              ? { cursor: hoverCursor }
-              : activeTool === 'dot'
-              ? { cursor: 'cell' }
-              : activeTool === 'arrow'
-              ? { cursor: 'default' }
-              : {}),
-          }}
+          style={chartBgStyle}
           className="flex-1 relative min-h-[220px] overflow-hidden"
         >
           <canvas
@@ -3873,7 +3918,22 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             ref={underDrawCanvasRef}
             className="absolute inset-0 w-full h-full z-[1] pointer-events-none"
           />
-          <div ref={chartContainerRef} className="absolute inset-0 w-full h-full z-[2]" />
+          <div
+            ref={chartContainerRef}
+            className={`absolute inset-0 w-full h-full z-[2] ${
+              hoverCursor === 'move'
+                ? 'tv-cursor-move'
+                : hoverCursor === 'pointer'
+                ? 'tv-cursor-pointer'
+                : hoverCursor === 'ns-resize'
+                ? 'tv-cursor-ns-resize'
+                : activeTool === 'cursor'
+                ? 'tv-cursor-crosshair'
+                : activeTool === 'dot'
+                ? 'tv-cursor-dot'
+                : ''
+            }`}
+          />
           <canvas
             ref={drawCanvasRef}
             onMouseDown={handleDrawMouseDown}
@@ -3888,7 +3948,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             onDoubleClick={commitPathDrawing}
             className={`absolute inset-0 w-full h-full z-[3] ${
               !isCursorTool(activeTool)
-                ? 'pointer-events-auto cursor-crosshair'
+                ? 'pointer-events-auto tv-cursor-crosshair'
                 : 'pointer-events-none'
             }`}
           />

@@ -91,3 +91,47 @@ body,
 .animate-live-pulse {
   animation: livePulse 1.6s ease-in-out infinite;
 }
+
+/* TradingView-exact crisp centered '+' crosshair & dot cursors on the chart plot area */
+.tv-cursor-crosshair,
+.tv-cursor-crosshair .tv-lightweight-charts tr:first-child td:nth-child(2),
+.tv-cursor-crosshair .tv-lightweight-charts tr:first-child td:nth-child(2) * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 15 15'%3E%3Cpath d='M7.5 2V13M2 7.5H13' stroke='%23ffffff' stroke-width='2.4' stroke-linecap='square' opacity='0.75'/%3E%3Cpath d='M7.5 2V13M2 7.5H13' stroke='%23434651' stroke-width='1.2' stroke-linecap='square'/%3E%3C/svg%3E") 7 7, crosshair !important;
+}
+
+.dark .tv-cursor-crosshair,
+.dark .tv-cursor-crosshair .tv-lightweight-charts tr:first-child td:nth-child(2),
+.dark .tv-cursor-crosshair .tv-lightweight-charts tr:first-child td:nth-child(2) * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 15 15'%3E%3Cpath d='M7.5 2V13M2 7.5H13' stroke='%23131722' stroke-width='2.4' stroke-linecap='square' opacity='0.8'/%3E%3Cpath d='M7.5 2V13M2 7.5H13' stroke='%23d1d4dc' stroke-width='1.2' stroke-linecap='square'/%3E%3C/svg%3E") 7 7, crosshair !important;
+}
+
+.tv-cursor-dot,
+.tv-cursor-dot .tv-lightweight-charts tr:first-child td:nth-child(2),
+.tv-cursor-dot .tv-lightweight-charts tr:first-child td:nth-child(2) * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 15 15'%3E%3Ccircle cx='7.5' cy='7.5' r='3.2' fill='%23434651' stroke='%23ffffff' stroke-width='1.2'/%3E%3C/svg%3E") 7 7, cell !important;
+}
+
+.dark .tv-cursor-dot,
+.dark .tv-cursor-dot .tv-lightweight-charts tr:first-child td:nth-child(2),
+.dark .tv-cursor-dot .tv-lightweight-charts tr:first-child td:nth-child(2) * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 15 15'%3E%3Ccircle cx='7.5' cy='7.5' r='3.2' fill='%23d1d4dc' stroke='%23131722' stroke-width='1.2'/%3E%3C/svg%3E") 7 7, cell !important;
+}
+
+.tv-cursor-move,
+.tv-cursor-move .tv-lightweight-charts tr:first-child td:nth-child(2),
+.tv-cursor-move .tv-lightweight-charts tr:first-child td:nth-child(2) * {
+  cursor: move !important;
+}
+
+.tv-cursor-pointer,
+.tv-cursor-pointer .tv-lightweight-charts tr:first-child td:nth-child(2),
+.tv-cursor-pointer .tv-lightweight-charts tr:first-child td:nth-child(2) * {
+  cursor: pointer !important;
+}
+
+.tv-cursor-ns-resize,
+.tv-cursor-ns-resize .tv-lightweight-charts tr:first-child td:nth-child(2),
+.tv-cursor-ns-resize .tv-lightweight-charts tr:first-child td:nth-child(2) * {
+  cursor: ns-resize !important;
+}
+
