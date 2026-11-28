@@ -496,7 +496,8 @@ export function renderDrawingObject(
   s: DrawingObject,
   bridge: CoordBridge,
   isSelected: boolean,
-  isHovered = false
+  isHovered = false,
+  isDraft = false
 ) {
   const { width, height } = bridge;
   const color = s.color || '#2962ff';
@@ -628,10 +629,14 @@ export function renderDrawingObject(
         const mx = (a.x + b.x) / 2;
         const my = (a.y + b.y) / 2;
         ctx.save();
-        ctx.fillStyle = color;
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
-        ctx.arc(mx, my, 3.2, 0, Math.PI * 2);
+        ctx.arc(mx, my, 3.8, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
         ctx.restore();
       }
 
@@ -643,10 +648,12 @@ export function renderDrawingObject(
       drawLineText(ctx, s, a, b);
       drawLineStats(ctx, s, a, b, bridge, isSelected);
 
-      // CRITICAL: Endpoints ONLY appear when selected or hovered!
+      // Endpoints ONLY appear when selected or hovered; while actively drawing (draft), only p1 shows the blue circle!
       if (showHandles) {
         drawHandleDot(ctx, a.x, a.y, isSelected);
-        drawHandleDot(ctx, b.x, b.y, isSelected);
+        if (!isDraft) {
+          drawHandleDot(ctx, b.x, b.y, isSelected);
+        }
       }
       break;
     }
@@ -691,7 +698,7 @@ export function renderDrawingObject(
       drawLineText(ctx, s, a, b);
       if (showHandles) {
         drawHandleDot(ctx, a.x, a.y, isSelected);
-        drawHandleDot(ctx, b.x, b.y, isSelected);
+        if (!isDraft) drawHandleDot(ctx, b.x, b.y, isSelected);
       }
       break;
     }
@@ -1121,7 +1128,7 @@ export function renderDrawingObject(
       drawLineText(ctx, s, a, b);
       if (showHandles) {
         drawHandleDot(ctx, a.x, a.y, isSelected);
-        drawHandleDot(ctx, b.x, b.y, isSelected);
+        if (!isDraft) drawHandleDot(ctx, b.x, b.y, isSelected);
       }
       break;
     }

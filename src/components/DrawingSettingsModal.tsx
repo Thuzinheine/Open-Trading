@@ -46,6 +46,76 @@ const SHAPE_FILL_TOOLS = new Set([
   'disjoint_channel',
 ]);
 
+const VisibilityDualSlider: React.FC<{
+  minLimit: number;
+  maxLimit: number;
+  minVal: number;
+  maxVal: number;
+  disabled?: boolean;
+  onChange: (nextMin: number, nextMax: number) => void;
+}> = ({ minLimit, maxLimit, minVal, maxVal, disabled, onChange }) => {
+  const trackRef = React.useRef<HTMLDivElement>(null);
+
+  const startDrag = (which: 'min' | 'max') => (e: React.MouseEvent) => {
+    if (disabled) return;
+    e.preventDefault();
+    const track = trackRef.current;
+    if (!track) return;
+    const rect = track.getBoundingClientRect();
+    const updateFromClientX = (clientX: number) => {
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
+      const raw = Math.round(minLimit + ratio * (maxLimit - minLimit));
+      if (which === 'min') {
+        onChange(Math.max(minLimit, Math.min(maxVal, raw)), maxVal);
+      } else {
+        onChange(minVal, Math.min(maxLimit, Math.max(minVal, raw)));
+      }
+    };
+    updateFromClientX(e.clientX);
+    const onMove = (ev: MouseEvent) => updateFromClientX(ev.clientX);
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const span = Math.max(1, maxLimit - minLimit);
+  const leftPct = ((minVal - minLimit) / span) * 100;
+  const rightPct = ((maxVal - minLimit) / span) * 100;
+
+  return (
+    <div
+      ref={trackRef}
+      className={`relative h-5 flex items-center select-none ${disabled ? 'opacity-35' : ''}`}
+    >
+      <div className="w-full h-[5px] rounded-full bg-[var(--border)] relative">
+        <div
+          className="absolute top-0 bottom-0 rounded-full bg-[#434651] dark:bg-[#787b86]"
+          style={{ left: `${leftPct}%`, right: `${100 - rightPct}%` }}
+        />
+      </div>
+      <button
+        type="button"
+        disabled={disabled}
+        onMouseDown={startDrag('min')}
+        aria-label="Minimum"
+        style={{ left: `${leftPct}%` }}
+        className="absolute -translate-x-1/2 w-[13px] h-[13px] rounded-full bg-white border-[1.75px] border-[#131722] dark:border-[#d1d4dc] shadow-xs cursor-ew-resize"
+      />
+      <button
+        type="button"
+        disabled={disabled}
+        onMouseDown={startDrag('max')}
+        aria-label="Maximum"
+        style={{ left: `${rightPct}%` }}
+        className="absolute -translate-x-1/2 w-[13px] h-[13px] rounded-full bg-white border-[1.75px] border-[#131722] dark:border-[#d1d4dc] shadow-xs cursor-ew-resize"
+      />
+    </div>
+  );
+};
+
 export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
   open,
   drawing,
@@ -330,7 +400,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                     )}
                   </div>
 
-                  {/* Left / Right End Cap Buttons (Normal vs Arrow) */}
+                  {/* Left / Right End Cap Buttons (Normal vs Arrow — exact TradingView SVG) */}
                   {isLineLike && (
                     <>
                       <button
@@ -341,13 +411,22 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                           })
                         }
                         title={`Left end: ${drawing.leftEnd === 'arrow' ? 'Arrow' : 'Normal'}`}
-                        className={`h-8 w-8 rounded-md border flex items-center justify-center text-xs cursor-pointer ${
+                        className={`h-8 w-8 rounded-md border flex items-center justify-center cursor-pointer ${
                           drawing.leftEnd === 'arrow'
                             ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
                             : 'border-[var(--border)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
-                        {drawing.leftEnd === 'arrow' ? '←' : 'o—'}
+                        {drawing.leftEnd === 'arrow' ? (
+                          <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+                            <path d="M16 6H3M3 6L7 2.5M3 6L7 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        ) : (
+                          <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+                            <circle cx="4.5" cy="6" r="2.2" stroke="currentColor" strokeWidth="1.3" />
+                            <line x1="6.7" y1="6" x2="16" y2="6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                          </svg>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -358,13 +437,22 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                           })
                         }
                         title={`Right end: ${drawing.rightEnd === 'arrow' ? 'Arrow' : 'Normal'}`}
-                        className={`h-8 w-8 rounded-md border flex items-center justify-center text-xs cursor-pointer ${
+                        className={`h-8 w-8 rounded-md border flex items-center justify-center cursor-pointer ${
                           drawing.rightEnd === 'arrow'
                             ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
                             : 'border-[var(--border)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
-                        {drawing.rightEnd === 'arrow' ? '→' : '—o'}
+                        {drawing.rightEnd === 'arrow' ? (
+                          <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+                            <path d="M2 6H15M15 6L11 2.5M15 6L11 9.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        ) : (
+                          <svg width="18" height="12" viewBox="0 0 18 12" fill="none">
+                            <line x1="2" y1="6" x2="11.3" y2="6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                            <circle cx="13.5" cy="6" r="2.2" stroke="currentColor" strokeWidth="1.3" />
+                          </svg>
+                        )}
                       </button>
                     </>
                   )}
@@ -850,18 +938,19 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                       className="h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs disabled:opacity-40"
                     />
 
-                    {/* Visual Range Indicator Bar */}
-                    <div className="relative h-1.5 rounded-full bg-[var(--border)]">
-                      <div
-                        className={`absolute top-0 bottom-0 rounded-full ${
-                          rng.enabled ? 'bg-[#131722] dark:bg-[var(--accent)]' : 'bg-transparent'
-                        }`}
-                        style={{
-                          left: `${((rng.min - 1) / Math.max(1, row.maxLimit - 1)) * 100}%`,
-                          right: `${((row.maxLimit - rng.max) / Math.max(1, row.maxLimit - 1)) * 100}%`,
-                        }}
-                      />
-                    </div>
+                    {/* Interactive Dual-Thumb Range Slider (matches TradingView Visibility tab) */}
+                    <VisibilityDualSlider
+                      minLimit={1}
+                      maxLimit={row.maxLimit}
+                      minVal={rng.min}
+                      maxVal={rng.max}
+                      disabled={!rng.enabled}
+                      onChange={(nextMin, nextMax) =>
+                        patchVisibility({
+                          [row.key]: { ...rng, min: nextMin, max: nextMax },
+                        })
+                      }
+                    />
 
                     <input
                       type="number"

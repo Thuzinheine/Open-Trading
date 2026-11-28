@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useMemo,
   useRef,
   useState,
   useCallback,
@@ -313,13 +314,17 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
 
     // Drawing interaction refs
     const isDrawingRef = useRef(false);
-    const drawStageRef = useRef<0 | 1 | 2>(0); // for 3-point & multi-point tools
+    const drawStageRef = useRef<0 | 1 | 2>(0); // 0 = idle, 1 = moving to p2, 2 = moving to p3
     const tempShapeRef = useRef<DrawingObject | null>(null);
+    const drawCursorRef = useRef<{ x: number; y: number } | null>(null);
+    const lastPointerClientRef = useRef<{ clientX: number; clientY: number } | null>(null);
+    const shiftPressedRef = useRef(false);
     const zoomBoxRef = useRef<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
     const dragEditRef = useRef<{
       drawingId: string;
       handleKey?: HandleHit['handleKey'];
       startAnchor: AnchorPoint;
+      startScreen: { x: number; y: number };
       origDrawing: DrawingObject;
     } | null>(null);
 
@@ -712,7 +717,38 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           )
         );
         if (tempShapeRef.current) {
-          renderDrawingObject(ctx, tempShapeRef.current, bridge, true, false);
+          renderDrawingObject(ctx, tempShapeRef.current, bridge, true, false, true);
+        }
+
+        // Crisp TradingView dashed crosshair while any drawing tool is active
+        if (!isCursorTool(activeToolRef.current) && drawCursorRef.current) {
+          const cx = Math.round(drawCursorRef.current.x) + 0.5;
+          const cy = Math.round(drawCursorRef.current.y) + 0.5;
+          if (cx >= plotLeft && cx <= plotLeft + plotWidth && cy >= 0 && cy <= plotHeight) {
+            ctx.save();
+            ctx.strokeStyle = '#9598a1';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(plotLeft, cy);
+            ctx.lineTo(plotLeft + plotWidth, cy);
+            ctx.moveTo(cx, 0);
+            ctx.lineTo(cx, plotHeight);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            // Subtle crisp '+' center mark at snapped/active point
+            if (shiftPressedRef.current && tempShapeRef.current) {
+              ctx.strokeStyle = '#434651';
+              ctx.lineWidth = 1.4;
+              ctx.beginPath();
+              ctx.moveTo(cx - 5, cy);
+              ctx.lineTo(cx + 5, cy);
+              ctx.moveTo(cx, cy - 5);
+              ctx.lineTo(cx, cy + 5);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
         }
         ctx.restore();
       }
@@ -2563,6 +2599,125 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       [onAddDrawing, onSelectDrawingId, onSelectTool]
     );
 
+    // Angle-snappable drawing tools (Shift locks to exact 0°, 45°, 90°, 135°, 180° increments!)
+    const ANGLE_SNAP_TOOLS = useMemo(
+      () =>
+        new Set<string>([
+          'trendline',
+          'ray',
+          'infoline',
+          'extended',
+          'angle',
+          'arrow_line',
+          'channel',
+          'flat_channel',
+          'disjoint_channel',
+          'callout',
+          'path',
+        ]),
+      []
+    );
+
+    const updateDrawCrosshairTag = useCallback((sy: number, priceVal: number | null) => {
+      const tagEl = crosshairTagElRef.current;
+      const txtEl = crosshairPriceTextElRef.current;
+      const plusBtnEl = crosshairPlusBtnElRef.current;
+      if (plusBtnEl) plusBtnEl.style.visibility = 'hidden';
+      if (!tagEl || !txtEl) return;
+      if (priceVal === null || !Number.isFinite(priceVal) || sy < 10) {
+        tagEl.style.visibility = 'hidden';
+        return;
+      }
+      const arr = displayCandlesRef.current;
+      const symCfg = chartSettingsRef.current.symbol;
+      const refClose = arr.length ? arr[arr.length - 1].close : priceVal;
+      const prec =
+        symCfg.precision === 'default'
+          ? getPrecision(refClose)
+          : parseInt(symCfg.precision, 10);
+      txtEl.textContent = fmtPrice(priceVal, prec);
+      tagEl.style.transform = `translate3d(0, ${Math.round(sy - 9.5)}px, 0)`;
+      tagEl.style.visibility = 'visible';
+    }, []);
+
+    // Snap a moving point to exact 45° multiples (0°, 45°, 90°, 135°, 180°, -135°, -90°, -45°) relative to fixedAnchor
+    const snapPointTo45Degrees = useCallback(
+      (
+        fixedAnchor: AnchorPoint,
+        rawSx: number,
+        rawSy: number
+      ): { sx: number; sy: number; anchor: AnchorPoint | null } => {
+        const bridge = buildCoordBridge();
+        const origin = bridge?.ptToScreen(fixedAnchor);
+        if (!origin) {
+          return { sx: rawSx, sy: rawSy, anchor: screenToAnchor(rawSx, rawSy, false) };
+        }
+        const dx = rawSx - origin.x;
+        const dy = rawSy - origin.y;
+        if (Math.hypot(dx, dy) < 1) {
+          return { sx: rawSx, sy: rawSy, anchor: fixedAnchor };
+        }
+
+        const step = Math.PI / 4; // 45 degrees
+        const sector = Math.round(Math.atan2(dy, dx) / step);
+        const snappedAngle = sector * step;
+
+        // Exact 0° or 180° -> pure horizontal (zero price drift!)
+        if (sector === 0 || Math.abs(sector) === 4) {
+          const a = screenToAnchor(rawSx, origin.y, false);
+          return {
+            sx: rawSx,
+            sy: origin.y,
+            anchor: a ? { time: a.time, price: fixedAnchor.price } : null,
+          };
+        }
+
+        // Exact 90° or -90° -> pure vertical (zero bar/time drift!)
+        if (Math.abs(sector) === 2) {
+          const a = screenToAnchor(origin.x, rawSy, false);
+          return {
+            sx: origin.x,
+            sy: rawSy,
+            anchor: a ? { time: fixedAnchor.time, price: a.price } : null,
+          };
+        }
+
+        // Exact ±45° / ±135° diagonal projection in screen space
+        const ux = Math.cos(snappedAngle);
+        const uy = Math.sin(snappedAngle);
+        const proj = Math.max(0, dx * ux + dy * uy);
+        const sx = origin.x + proj * ux;
+        const sy = origin.y + proj * uy;
+        return {
+          sx,
+          sy,
+          anchor: screenToAnchor(sx, sy, false),
+        };
+      },
+      [buildCoordBridge, screenToAnchor]
+    );
+
+    const cancelPendingDrawing = useCallback(() => {
+      if (!tempShapeRef.current && !zoomBoxRef.current) return;
+      tempShapeRef.current = null;
+      zoomBoxRef.current = null;
+      isDrawingRef.current = false;
+      drawStageRef.current = 0;
+      setDrawingHint(null);
+      redrawOverlay();
+    }, [redrawOverlay]);
+
+    // Clear unfinished draft when user switches tool
+    useEffect(() => {
+      tempShapeRef.current = null;
+      zoomBoxRef.current = null;
+      isDrawingRef.current = false;
+      drawStageRef.current = 0;
+      drawCursorRef.current = null;
+      setDrawingHint(null);
+      redrawOverlay();
+    }, [activeTool, redrawOverlay]);
+
     // Finish Path drawing on Enter or Double-Click
     const commitPathDrawing = useCallback(() => {
       const shape = tempShapeRef.current;
@@ -2570,316 +2725,170 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         tempShapeRef.current = null;
         isDrawingRef.current = false;
         drawStageRef.current = 0;
+        drawCursorRef.current = null;
         finalizeDrawing(shape);
       }
     }, [finalizeDrawing]);
 
-    useEffect(() => {
-      const onKey = (e: KeyboardEvent) => {
-        if (e.key === 'Enter' && tempShapeRef.current?.type === 'path') {
-          e.preventDefault();
-          commitPathDrawing();
-        }
-      };
-      window.addEventListener('keydown', onKey);
-      return () => window.removeEventListener('keydown', onKey);
-    }, [commitPathDrawing]);
+    // Shared live preview updater (called both on mousemove AND immediately when Shift is pressed/released!)
+    const updateDraftPreviewAt = useCallback(
+      (sx: number, sy: number, shiftHeld: boolean) => {
+        const tool = activeToolRef.current;
+        if (isCursorTool(tool)) return;
 
-    // Canvas Drawing Mouse Handlers (active when a non-cursor tool is selected)
-    const handleDrawMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (e.button !== 0 || isCursorTool(activeTool)) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-
-      // Zoom Box Tool
-      if (activeTool === 'zoom_in') {
-        zoomBoxRef.current = { x1: sx, y1: sy, x2: sx, y2: sy };
-        isDrawingRef.current = true;
-        redrawOverlay();
-        return;
-      }
-
-      const pt = screenToAnchor(sx, sy);
-      if (!pt) return;
-
-      // Text Tool -> Open inline input right at clicked position
-      if (activeTool === 'text') {
-        setTextPrompt({ x: sx, y: sy, mode: 'text', p1: pt, value: '' });
-        return;
-      }
-
-      // Path Multi-Point Tool
-      if (activeTool === 'path') {
-        if (!tempShapeRef.current) {
-          tempShapeRef.current = {
-            id: `d-${Date.now()}`,
-            type: 'path',
-            color: drawColor,
-            lineWidth: 2,
-            points: [pt, pt],
-          };
-          isDrawingRef.current = true;
-        } else if (tempShapeRef.current.points) {
-          tempShapeRef.current.points[tempShapeRef.current.points.length - 1] = pt;
-          tempShapeRef.current.points.push(pt);
-        }
-        redrawOverlay();
-        return;
-      }
-
-      // 3-Point Tools (Channel, Flat Channel, Disjoint Channel, Pitchfork, Fib Ext, Triangle)
-      if (THREE_POINT_TOOLS.includes(activeTool)) {
-        if (drawStageRef.current === 0) {
-          tempShapeRef.current = {
-            id: `d-${Date.now()}`,
-            type: activeTool as DrawingObject['type'],
-            color: drawColor,
-            lineWidth: 1.8,
-            p1: pt,
-            p2: pt,
-          };
-          isDrawingRef.current = true;
-          drawStageRef.current = 1;
-          setDrawingHint('Drag or click second point...');
+        if (tool === 'zoom_in' && isDrawingRef.current && zoomBoxRef.current) {
+          zoomBoxRef.current.x2 = sx;
+          zoomBoxRef.current.y2 = sy;
+          drawCursorRef.current = { x: sx, y: sy };
           redrawOverlay();
           return;
         }
-        if (drawStageRef.current === 2 && tempShapeRef.current) {
-          tempShapeRef.current.p3 = pt;
-          const finished = tempShapeRef.current;
-          tempShapeRef.current = null;
-          isDrawingRef.current = false;
-          drawStageRef.current = 0;
-          finalizeDrawing(finished);
-          return;
-        }
-      }
 
-      // 1-Click Instant Tools
-      if (ONE_CLICK_TOOLS.includes(activeTool)) {
-        const id = `d-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        if (activeTool === 'hline') {
-          finalizeDrawing({ id, type: 'hline', color: drawColor, lineWidth: 1.6, price: pt.price });
-        } else if (activeTool === 'vline') {
-          finalizeDrawing({ id, type: 'vline', color: drawColor, lineWidth: 1.6, time: pt.time });
-        } else if (activeTool === 'hray' || activeTool === 'crossline' || activeTool === 'price_label') {
-          finalizeDrawing({ id, type: activeTool, color: drawColor, lineWidth: 1.6, p1: pt });
-        } else if (activeTool === 'long_pos' || activeTool === 'short_pos') {
-          const step = INTERVAL_SECONDS[interval] || 86400;
-          const isLong = activeTool === 'long_pos';
-          // Scale default stop/target cleanly from recent visible ATR/range
-          const recent = effectiveCandles.slice(-30);
-          const avgRange =
-            recent.length > 0
-              ? recent.reduce((acc, c) => acc + (c.high - c.low), 0) / recent.length
-              : pt.price * 0.02;
-          const riskDist = Math.max(pt.price * 0.004, avgRange * 1.6);
-          const rewardDist = riskDist * 2.2;
-
-          finalizeDrawing({
-            id,
-            type: activeTool,
-            color: isLong ? '#089981' : '#f23645',
-            lineWidth: 1.5,
-            p1: pt,
-            p2: { time: pt.time + step * 18, price: pt.price },
-            targetPrice: isLong ? pt.price + rewardDist : pt.price - rewardDist,
-            stopPrice: isLong ? pt.price - riskDist : pt.price + riskDist,
-          });
-        }
-        return;
-      }
-
-      // Freehand Brush / Highlighter
-      if (activeTool === 'brush' || activeTool === 'highlighter') {
-        isDrawingRef.current = true;
-        tempShapeRef.current = {
-          id: `d-${Date.now()}`,
-          type: activeTool,
-          color: drawColor,
-          lineWidth: activeTool === 'highlighter' ? 3 : 2,
-          points: [pt],
-        };
-        redrawOverlay();
-        return;
-      }
-
-      // Standard 2-Point Tools (Trendline, Ray, Info Line, Extended, Angle, Fib, Rect, Ellipse, Arrow, Callout, Measure, Ranges)
-      isDrawingRef.current = true;
-      tempShapeRef.current = {
-        id: `d-${Date.now()}`,
-        type: activeTool as DrawingObject['type'],
-        color: drawColor,
-        lineWidth: 1.8,
-        p1: pt,
-        p2: pt,
-      };
-      redrawOverlay();
-    };
-
-    const handleDrawMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (isCursorTool(activeTool)) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-
-      if (activeTool === 'zoom_in' && isDrawingRef.current && zoomBoxRef.current) {
-        zoomBoxRef.current.x2 = sx;
-        zoomBoxRef.current.y2 = sy;
-        redrawOverlay();
-        return;
-      }
-
-      if (!tempShapeRef.current) return;
-      const pt = screenToAnchor(sx, sy);
-      if (!pt) return;
-
-      if (tempShapeRef.current.type === 'path' && tempShapeRef.current.points) {
-        tempShapeRef.current.points[tempShapeRef.current.points.length - 1] = pt;
-        redrawOverlay();
-        return;
-      }
-
-      if (THREE_POINT_TOOLS.includes(activeTool)) {
-        if (drawStageRef.current === 1) {
-          tempShapeRef.current.p2 = pt;
-        } else if (drawStageRef.current === 2) {
-          tempShapeRef.current.p3 = pt;
-        }
-        redrawOverlay();
-        return;
-      }
-
-      if (!isDrawingRef.current) return;
-
-      if (
-        (tempShapeRef.current.type === 'brush' || tempShapeRef.current.type === 'highlighter') &&
-        tempShapeRef.current.points
-      ) {
-        tempShapeRef.current.points.push(pt);
-      } else {
-        tempShapeRef.current.p2 = pt;
-      }
-      redrawOverlay();
-    };
-
-    // Complete 2-point / brush / zoom-box drags on mouseup
-    useEffect(() => {
-      const handleMouseUp = (e: MouseEvent) => {
-        // Complete Zoom Box
-        if (zoomBoxRef.current && isDrawingRef.current && activeToolRef.current === 'zoom_in') {
-          const box = zoomBoxRef.current;
-          zoomBoxRef.current = null;
-          isDrawingRef.current = false;
-          const chart = chartRef.current;
-          const dist = Math.abs(box.x2 - box.x1);
-          if (chart && dist > 15) {
-            const l1 = chart.timeScale().coordinateToLogical(Math.min(box.x1, box.x2));
-            const l2 = chart.timeScale().coordinateToLogical(Math.max(box.x1, box.x2));
-            if (l1 !== null && l2 !== null && l2 - l1 >= 5) {
-              const span = l2 - l1;
-              savedZoomRef.current = { ...savedZoomRef.current, visibleBars: span };
-              saveZoomState(savedZoomRef.current);
-              isApplyingZoomRef.current = true;
-              chart.timeScale().setVisibleLogicalRange({ from: l1, to: l2 });
-              if (rsiChartRef.current) {
-                rsiChartRef.current.timeScale().setVisibleLogicalRange({ from: l1, to: l2 });
-              }
-              requestAnimationFrame(() => {
-                isApplyingZoomRef.current = false;
-              });
-            }
-          } else if (chart) {
-            // Simple click zooms in by 25%
-            applyZoomRange(savedZoomRef.current.visibleBars * 0.75);
-          }
-          redrawOverlay();
-          if (!stayInDrawingRef.current) onSelectTool('cursor');
-          return;
-        }
-
-        // Complete existing drawing handle/body drag
-        if (dragEditRef.current) {
-          dragEditRef.current = null;
-          return;
-        }
-
-        if (!isDrawingRef.current || !tempShapeRef.current) return;
         const shape = tempShapeRef.current;
-
-        if (shape.type === 'path') return; // finished via double-click / Enter
-
-        // Transition 3-point tool from stage 1 -> stage 2 (waiting for 3rd point click)
-        if (THREE_POINT_TOOLS.includes(shape.type as DrawingTool)) {
-          if (drawStageRef.current === 1) {
-            if (shape.p1 && shape.p2 && shape.p1.time === shape.p2.time && shape.p1.price === shape.p2.price) {
-              // User clicked point 1 instead of dragging: keep waiting on stage 1? Better: move to stage 2 only when moved
-              return;
-            }
-            drawStageRef.current = 2;
-            setDrawingHint('Move mouse and click 3rd point to complete · Esc to cancel');
-          }
-          return;
-        }
-
-        // Callout opens text input at p2
-        if (shape.type === 'callout' && shape.p1 && shape.p2) {
-          isDrawingRef.current = false;
-          const p1 = shape.p1;
-          const p2 = shape.p2;
-          tempShapeRef.current = null;
-          const rect = drawCanvasRef.current?.getBoundingClientRect();
-          const sx = rect ? e.clientX - rect.left : 200;
-          const sy = rect ? e.clientY - rect.top : 140;
-          setTextPrompt({ x: sx, y: sy, mode: 'callout', p1, p2, value: '' });
+        if (!shape) {
+          drawCursorRef.current = { x: sx, y: sy };
+          const rawP = candleSeriesRef.current?.coordinateToPrice(sy);
+          updateDrawCrosshairTag(sy, rawP !== null && rawP !== undefined ? Number(rawP) : null);
           redrawOverlay();
           return;
         }
 
-        // Measure stays visible until click/tool switch or adds cleanly
-        isDrawingRef.current = false;
-        tempShapeRef.current = null;
-        finalizeDrawing(shape);
-      };
+        if (shape.type === 'path' && shape.points && shape.points.length >= 2) {
+          const prevAnchor = shape.points[shape.points.length - 2];
+          if (shiftHeld) {
+            const snapped = snapPointTo45Degrees(prevAnchor, sx, sy);
+            if (snapped.anchor) {
+              shape.points[shape.points.length - 1] = snapped.anchor;
+              drawCursorRef.current = { x: snapped.sx, y: snapped.sy };
+              updateDrawCrosshairTag(snapped.sy, snapped.anchor.price);
+            }
+          } else {
+            const pt = screenToAnchor(sx, sy);
+            if (pt) {
+              shape.points[shape.points.length - 1] = pt;
+              drawCursorRef.current = { x: sx, y: sy };
+              updateDrawCrosshairTag(sy, pt.price);
+            }
+          }
+          redrawOverlay();
+          return;
+        }
 
-      const handleWindowMouseMove = (e: MouseEvent) => {
-        if (draggingAlertRef.current && drawCanvasRef.current && candleSeriesRef.current) {
-          const rect = drawCanvasRef.current.getBoundingClientRect();
-          const sy = Math.max(10, Math.min(rect.height - 30, e.clientY - rect.top));
-          const nextPrice = candleSeriesRef.current.coordinateToPrice(sy);
-          if (nextPrice !== null && Number.isFinite(Number(nextPrice))) {
-            const pNum = Number(nextPrice);
-            const cur = draggingAlertRef.current;
-            draggingAlertRef.current = { id: cur.id, price: pNum, y: sy };
-            const al = alertsRef.current.find((a) => a.id === cur.id);
-            const arr = displayCandlesRef.current;
-            const refClose = arr.length ? arr[arr.length - 1].close : pNum;
-            const prec =
-              chartSettingsRef.current.symbol.precision === 'default'
-                ? getPrecision(refClose)
-                : parseInt(chartSettingsRef.current.symbol.precision, 10);
-            const condLabel =
-              al?.condition === 'above'
-                ? 'Crossing Up'
-                : al?.condition === 'below'
-                ? 'Crossing Down'
-                : 'Crossing';
-            const label = al?.note?.trim()
-              ? al.note.trim()
-              : `${symbolRef.current} ${condLabel} ${fmtPrice(pNum, prec)}`;
-            setAlertHoverInfo({ id: cur.id, y: sy, price: pNum, label });
+        if (
+          (shape.type === 'brush' || shape.type === 'highlighter') &&
+          isDrawingRef.current &&
+          shape.points
+        ) {
+          const pt = screenToAnchor(sx, sy);
+          if (pt) {
+            shape.points.push(pt);
+            drawCursorRef.current = { x: sx, y: sy };
+            updateDrawCrosshairTag(sy, pt.price);
             redrawOverlay();
-            updateCountdownPos();
           }
           return;
         }
-        if (!dragEditRef.current || !drawCanvasRef.current) return;
-        const rect = drawCanvasRef.current.getBoundingClientRect();
-        const pt = screenToAnchor(e.clientX - rect.left, e.clientY - rect.top, Boolean(dragEditRef.current.handleKey));
+
+        if (THREE_POINT_TOOLS.includes(tool)) {
+          if (drawStageRef.current === 1 && shape.p1) {
+            if (shiftHeld && ANGLE_SNAP_TOOLS.has(shape.type)) {
+              const snapped = snapPointTo45Degrees(shape.p1, sx, sy);
+              if (snapped.anchor) {
+                shape.p2 = snapped.anchor;
+                drawCursorRef.current = { x: snapped.sx, y: snapped.sy };
+                updateDrawCrosshairTag(snapped.sy, snapped.anchor.price);
+              }
+            } else {
+              const pt = screenToAnchor(sx, sy);
+              if (pt) {
+                shape.p2 = pt;
+                drawCursorRef.current = { x: sx, y: sy };
+                updateDrawCrosshairTag(sy, pt.price);
+              }
+            }
+          } else if (drawStageRef.current === 2) {
+            const pt = screenToAnchor(sx, sy);
+            if (pt) {
+              shape.p3 = pt;
+              drawCursorRef.current = { x: sx, y: sy };
+              updateDrawCrosshairTag(sy, pt.price);
+            }
+          }
+          redrawOverlay();
+          return;
+        }
+
+        // Standard 2-point rubber-band preview (Click #1 placed p1; mouse freely moves p2 until Click #2!)
+        if (drawStageRef.current === 1 && shape.p1) {
+          if (shiftHeld && ANGLE_SNAP_TOOLS.has(shape.type)) {
+            const snapped = snapPointTo45Degrees(shape.p1, sx, sy);
+            if (snapped.anchor) {
+              shape.p2 = snapped.anchor;
+              drawCursorRef.current = { x: snapped.sx, y: snapped.sy };
+              updateDrawCrosshairTag(snapped.sy, snapped.anchor.price);
+            }
+          } else {
+            const pt = screenToAnchor(sx, sy);
+            if (pt) {
+              shape.p2 = pt;
+              drawCursorRef.current = { x: sx, y: sy };
+              updateDrawCrosshairTag(sy, pt.price);
+            }
+          }
+          redrawOverlay();
+        }
+      },
+      [ANGLE_SNAP_TOOLS, redrawOverlay, screenToAnchor, snapPointTo45Degrees, updateDrawCrosshairTag]
+    );
+
+    // Shared drag-edit updater for existing drawings (supports Shift 45°/90°/180° angle lock on handles & body!)
+    const applyDragEditAt = useCallback(
+      (sx: number, sy: number, shiftHeld: boolean) => {
+        const drag = dragEditRef.current;
+        if (!drag) return;
+        const { drawingId, handleKey, startAnchor, startScreen, origDrawing } = drag;
+
+        let resolvedPt: AnchorPoint | null = null;
+        if (
+          shiftHeld &&
+          handleKey === 'p2' &&
+          origDrawing.p1 &&
+          ANGLE_SNAP_TOOLS.has(origDrawing.type)
+        ) {
+          resolvedPt = snapPointTo45Degrees(origDrawing.p1, sx, sy).anchor;
+        } else if (
+          shiftHeld &&
+          handleKey === 'p1' &&
+          origDrawing.p2 &&
+          ANGLE_SNAP_TOOLS.has(origDrawing.type)
+        ) {
+          resolvedPt = snapPointTo45Degrees(origDrawing.p2, sx, sy).anchor;
+        } else if (shiftHeld && !handleKey) {
+          // Shift-dragging whole drawing locks movement along 0°/45°/90°/180° axis from start point
+          const dx = sx - startScreen.x;
+          const dy = sy - startScreen.y;
+          if (Math.hypot(dx, dy) >= 1) {
+            const step = Math.PI / 4;
+            const sector = Math.round(Math.atan2(dy, dx) / step);
+            const ang = sector * step;
+            const ux = Math.cos(ang);
+            const uy = Math.sin(ang);
+            const proj = Math.max(0, dx * ux + dy * uy);
+            const snappedSx = sector === 0 || Math.abs(sector) === 4 ? sx : Math.abs(sector) === 2 ? startScreen.x : startScreen.x + proj * ux;
+            const snappedSy = sector === 0 || Math.abs(sector) === 4 ? startScreen.y : Math.abs(sector) === 2 ? sy : startScreen.y + proj * uy;
+            const rawSnap = screenToAnchor(snappedSx, snappedSy, false);
+            if (rawSnap) {
+              resolvedPt = {
+                time: Math.abs(sector) === 2 ? startAnchor.time : rawSnap.time,
+                price: sector === 0 || Math.abs(sector) === 4 ? startAnchor.price : rawSnap.price,
+              };
+            }
+          }
+        }
+
+        const pt = resolvedPt || screenToAnchor(sx, sy, Boolean(handleKey) && !shiftHeld);
         if (!pt) return;
 
-        const { drawingId, handleKey, startAnchor, origDrawing } = dragEditRef.current;
         const dt = pt.time - startAnchor.time;
         const dp = pt.price - startAnchor.price;
 
@@ -2914,6 +2923,359 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           }
           return clone;
         });
+      },
+      [ANGLE_SNAP_TOOLS, onUpdateDrawing, screenToAnchor, snapPointTo45Degrees]
+    );
+
+    // Keyboard listeners: Enter (commit Path), Esc (cancel in-progress draft), Shift press/release (instant 45/90/180 snap!)
+    useEffect(() => {
+      const refreshShiftSnap = (isShift: boolean) => {
+        shiftPressedRef.current = isShift;
+        const canvas = drawCanvasRef.current;
+        const ptr = lastPointerClientRef.current;
+        if (!canvas || !ptr) return;
+        const rect = canvas.getBoundingClientRect();
+        const sx = ptr.clientX - rect.left;
+        const sy = ptr.clientY - rect.top;
+        if (dragEditRef.current) {
+          applyDragEditAt(sx, sy, isShift);
+        } else if (tempShapeRef.current && !isCursorTool(activeToolRef.current)) {
+          updateDraftPreviewAt(sx, sy, isShift);
+        }
+      };
+
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Shift') {
+          if (!shiftPressedRef.current) refreshShiftSnap(true);
+          return;
+        }
+        if (e.key === 'Enter' && tempShapeRef.current?.type === 'path') {
+          e.preventDefault();
+          commitPathDrawing();
+          return;
+        }
+        if (e.key === 'Escape' && (tempShapeRef.current || zoomBoxRef.current)) {
+          cancelPendingDrawing();
+        }
+      };
+
+      const onKeyUp = (e: KeyboardEvent) => {
+        if (e.key === 'Shift') {
+          if (shiftPressedRef.current) refreshShiftSnap(false);
+        }
+      };
+
+      const onWindowBlur = () => {
+        shiftPressedRef.current = false;
+      };
+
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+      window.addEventListener('blur', onWindowBlur);
+      return () => {
+        window.removeEventListener('keydown', onKeyDown);
+        window.removeEventListener('keyup', onKeyUp);
+        window.removeEventListener('blur', onWindowBlur);
+      };
+    }, [applyDragEditAt, cancelPendingDrawing, commitPathDrawing, updateDraftPreviewAt]);
+
+    // Canvas Drawing Mouse Handlers (exact TradingView Click-Move-Click + Shift 45°/90°/180° Snap!)
+    const handleDrawMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (e.button === 2 && tempShapeRef.current) {
+        e.preventDefault();
+        cancelPendingDrawing();
+        return;
+      }
+      if (e.button !== 0 || isCursorTool(activeTool)) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const shiftHeld = e.shiftKey || shiftPressedRef.current;
+      shiftPressedRef.current = shiftHeld;
+      lastPointerClientRef.current = { clientX: e.clientX, clientY: e.clientY };
+
+      // Zoom Box Tool (press-drag-release)
+      if (activeTool === 'zoom_in') {
+        zoomBoxRef.current = { x1: sx, y1: sy, x2: sx, y2: sy };
+        isDrawingRef.current = true;
+        redrawOverlay();
+        return;
+      }
+
+      const pt = screenToAnchor(sx, sy);
+      if (!pt) return;
+
+      // Text Tool -> Open inline input right at clicked position
+      if (activeTool === 'text') {
+        setTextPrompt({ x: sx, y: sy, mode: 'text', p1: pt, value: '' });
+        return;
+      }
+
+      // Path Multi-Point Tool
+      if (activeTool === 'path') {
+        if (!tempShapeRef.current) {
+          tempShapeRef.current = {
+            id: `d-${Date.now()}`,
+            type: 'path',
+            color: drawColor,
+            lineWidth: 2,
+            points: [pt, pt],
+          };
+          isDrawingRef.current = true;
+          drawStageRef.current = 1;
+        } else if (tempShapeRef.current.points && tempShapeRef.current.points.length >= 2) {
+          const prevAnchor = tempShapeRef.current.points[tempShapeRef.current.points.length - 2];
+          const nextPt = shiftHeld ? snapPointTo45Degrees(prevAnchor, sx, sy).anchor || pt : pt;
+          tempShapeRef.current.points[tempShapeRef.current.points.length - 1] = nextPt;
+          tempShapeRef.current.points.push(nextPt);
+        }
+        redrawOverlay();
+        return;
+      }
+
+      // 3-Point Tools (Click #1 -> Move -> Click #2 -> Move -> Click #3)
+      if (THREE_POINT_TOOLS.includes(activeTool)) {
+        if (!tempShapeRef.current || drawStageRef.current === 0) {
+          tempShapeRef.current = {
+            id: `d-${Date.now()}`,
+            type: activeTool as DrawingObject['type'],
+            color: drawColor,
+            lineWidth: 1.8,
+            p1: pt,
+            p2: pt,
+          };
+          isDrawingRef.current = true;
+          drawStageRef.current = 1;
+          drawCursorRef.current = { x: sx, y: sy };
+          redrawOverlay();
+          return;
+        }
+        if (drawStageRef.current === 1 && tempShapeRef.current.p1) {
+          const finalP2 =
+            shiftHeld && ANGLE_SNAP_TOOLS.has(activeTool)
+              ? snapPointTo45Degrees(tempShapeRef.current.p1, sx, sy).anchor || pt
+              : pt;
+          tempShapeRef.current.p2 = finalP2;
+          tempShapeRef.current.p3 = finalP2;
+          drawStageRef.current = 2;
+          redrawOverlay();
+          return;
+        }
+        if (drawStageRef.current === 2 && tempShapeRef.current) {
+          tempShapeRef.current.p3 = pt;
+          const finished = tempShapeRef.current;
+          tempShapeRef.current = null;
+          isDrawingRef.current = false;
+          drawStageRef.current = 0;
+          drawCursorRef.current = null;
+          finalizeDrawing(finished);
+          return;
+        }
+      }
+
+      // 1-Click Instant Tools
+      if (ONE_CLICK_TOOLS.includes(activeTool)) {
+        const id = `d-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        if (activeTool === 'hline') {
+          finalizeDrawing({ id, type: 'hline', color: drawColor, lineWidth: 1.6, price: pt.price });
+        } else if (activeTool === 'vline') {
+          finalizeDrawing({ id, type: 'vline', color: drawColor, lineWidth: 1.6, time: pt.time });
+        } else if (activeTool === 'hray' || activeTool === 'crossline' || activeTool === 'price_label') {
+          finalizeDrawing({ id, type: activeTool, color: drawColor, lineWidth: 1.6, p1: pt });
+        } else if (activeTool === 'long_pos' || activeTool === 'short_pos') {
+          const step = INTERVAL_SECONDS[interval] || 86400;
+          const isLong = activeTool === 'long_pos';
+          const recent = effectiveCandles.slice(-30);
+          const avgRange =
+            recent.length > 0
+              ? recent.reduce((acc, c) => acc + (c.high - c.low), 0) / recent.length
+              : pt.price * 0.02;
+          const riskDist = Math.max(pt.price * 0.004, avgRange * 1.6);
+          const rewardDist = riskDist * 2.2;
+
+          finalizeDrawing({
+            id,
+            type: activeTool,
+            color: isLong ? '#089981' : '#f23645',
+            lineWidth: 1.5,
+            p1: pt,
+            p2: { time: pt.time + step * 18, price: pt.price },
+            targetPrice: isLong ? pt.price + rewardDist : pt.price - rewardDist,
+            stopPrice: isLong ? pt.price - riskDist : pt.price + riskDist,
+          });
+        }
+        return;
+      }
+
+      // Freehand Brush / Highlighter (press-drag-release)
+      if (activeTool === 'brush' || activeTool === 'highlighter') {
+        isDrawingRef.current = true;
+        tempShapeRef.current = {
+          id: `d-${Date.now()}`,
+          type: activeTool,
+          color: drawColor,
+          lineWidth: activeTool === 'highlighter' ? 3 : 2,
+          points: [pt],
+        };
+        redrawOverlay();
+        return;
+      }
+
+      // Standard 2-Point Tools (Trendline, Ray, Info Line, Extended, Angle, Fib, Rect, Ellipse, Arrow, Callout, Measure, Ranges)
+      // CLICK #1: Place start anchor p1 -> live preview follows mouse pointer!
+      if (!tempShapeRef.current || drawStageRef.current === 0) {
+        isDrawingRef.current = true;
+        drawStageRef.current = 1;
+        tempShapeRef.current = {
+          id: `d-${Date.now()}`,
+          type: activeTool as DrawingObject['type'],
+          color: drawColor,
+          lineWidth: 2,
+          p1: pt,
+          p2: pt,
+        };
+        drawCursorRef.current = { x: sx, y: sy };
+        redrawOverlay();
+        return;
+      }
+
+      // CLICK #2: Lock final end anchor p2 (with Shift 45°/90°/180° snap if held) & commit drawing!
+      if (drawStageRef.current === 1 && tempShapeRef.current && tempShapeRef.current.p1) {
+        const shape = tempShapeRef.current;
+        const finalP2 =
+          shiftHeld && ANGLE_SNAP_TOOLS.has(shape.type)
+            ? snapPointTo45Degrees(shape.p1!, sx, sy).anchor || pt
+            : pt;
+        shape.p2 = finalP2;
+
+        tempShapeRef.current = null;
+        isDrawingRef.current = false;
+        drawStageRef.current = 0;
+        drawCursorRef.current = null;
+
+        if (shape.type === 'callout' && shape.p1 && shape.p2) {
+          setTextPrompt({ x: sx, y: sy, mode: 'callout', p1: shape.p1, p2: shape.p2, value: '' });
+          redrawOverlay();
+          return;
+        }
+
+        finalizeDrawing(shape);
+      }
+    };
+
+    const handleDrawMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+      if (isCursorTool(activeTool)) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const shiftHeld = e.shiftKey || shiftPressedRef.current;
+      shiftPressedRef.current = shiftHeld;
+      lastPointerClientRef.current = { clientX: e.clientX, clientY: e.clientY };
+      updateDraftPreviewAt(sx, sy, shiftHeld);
+    };
+
+    const handleDrawMouseLeave = () => {
+      if (!isCursorTool(activeToolRef.current)) {
+        drawCursorRef.current = null;
+        if (crosshairTagElRef.current) crosshairTagElRef.current.style.visibility = 'hidden';
+        redrawOverlay();
+      }
+    };
+
+    // Complete brush / zoom-box drags & existing drawing handle/body drags on mouseup
+    useEffect(() => {
+      const handleMouseUp = () => {
+        // Complete Zoom Box
+        if (zoomBoxRef.current && isDrawingRef.current && activeToolRef.current === 'zoom_in') {
+          const box = zoomBoxRef.current;
+          zoomBoxRef.current = null;
+          isDrawingRef.current = false;
+          const chart = chartRef.current;
+          const dist = Math.abs(box.x2 - box.x1);
+          if (chart && dist > 15) {
+            const l1 = chart.timeScale().coordinateToLogical(Math.min(box.x1, box.x2));
+            const l2 = chart.timeScale().coordinateToLogical(Math.max(box.x1, box.x2));
+            if (l1 !== null && l2 !== null && l2 - l1 >= 5) {
+              const span = l2 - l1;
+              savedZoomRef.current = { ...savedZoomRef.current, visibleBars: span };
+              saveZoomState(savedZoomRef.current);
+              isApplyingZoomRef.current = true;
+              chart.timeScale().setVisibleLogicalRange({ from: l1, to: l2 });
+              if (rsiChartRef.current) {
+                rsiChartRef.current.timeScale().setVisibleLogicalRange({ from: l1, to: l2 });
+              }
+              requestAnimationFrame(() => {
+                isApplyingZoomRef.current = false;
+              });
+            }
+          } else if (chart) {
+            applyZoomRange(savedZoomRef.current.visibleBars * 0.75);
+          }
+          redrawOverlay();
+          if (!stayInDrawingRef.current) onSelectTool('cursor');
+          return;
+        }
+
+        // Complete existing drawing handle/body drag
+        if (dragEditRef.current) {
+          dragEditRef.current = null;
+          return;
+        }
+
+        // Only freehand Brush & Highlighter finalize on mouseup; 2-point & 3-point tools use Click-Move-Click!
+        const shape = tempShapeRef.current;
+        if (
+          isDrawingRef.current &&
+          shape &&
+          (shape.type === 'brush' || shape.type === 'highlighter')
+        ) {
+          isDrawingRef.current = false;
+          tempShapeRef.current = null;
+          drawStageRef.current = 0;
+          finalizeDrawing(shape);
+        }
+      };
+
+      const handleWindowMouseMove = (e: MouseEvent) => {
+        lastPointerClientRef.current = { clientX: e.clientX, clientY: e.clientY };
+        shiftPressedRef.current = e.shiftKey;
+
+        if (draggingAlertRef.current && drawCanvasRef.current && candleSeriesRef.current) {
+          const rect = drawCanvasRef.current.getBoundingClientRect();
+          const sy = Math.max(10, Math.min(rect.height - 30, e.clientY - rect.top));
+          const nextPrice = candleSeriesRef.current.coordinateToPrice(sy);
+          if (nextPrice !== null && Number.isFinite(Number(nextPrice))) {
+            const pNum = Number(nextPrice);
+            const cur = draggingAlertRef.current;
+            draggingAlertRef.current = { id: cur.id, price: pNum, y: sy };
+            const al = alertsRef.current.find((a) => a.id === cur.id);
+            const arr = displayCandlesRef.current;
+            const refClose = arr.length ? arr[arr.length - 1].close : pNum;
+            const prec =
+              chartSettingsRef.current.symbol.precision === 'default'
+                ? getPrecision(refClose)
+                : parseInt(chartSettingsRef.current.symbol.precision, 10);
+            const condLabel =
+              al?.condition === 'above'
+                ? 'Crossing Up'
+                : al?.condition === 'below'
+                ? 'Crossing Down'
+                : 'Crossing';
+            const label = al?.note?.trim()
+              ? al.note.trim()
+              : `${symbolRef.current} ${condLabel} ${fmtPrice(pNum, prec)}`;
+            setAlertHoverInfo({ id: cur.id, y: sy, price: pNum, label });
+            redrawOverlay();
+            updateCountdownPos();
+          }
+          return;
+        }
+
+        if (!dragEditRef.current || !drawCanvasRef.current) return;
+        const rect = drawCanvasRef.current.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        applyDragEditAt(sx, sy, e.shiftKey);
       };
 
       const handleAlertDragEnd = () => {
@@ -2933,7 +3295,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         window.removeEventListener('mouseup', handleMouseUp);
         window.removeEventListener('mousemove', handleWindowMouseMove);
       };
-    }, [applyZoomRange, finalizeDrawing, onSelectTool, onUpdateDrawing, redrawOverlay, screenToAnchor, updateCountdownPos]);
+    }, [applyDragEditAt, applyZoomRange, finalizeDrawing, onSelectTool, redrawOverlay, updateCountdownPos]);
 
     // Capture-phase selection & dragging of existing drawings / alert lines when in Cursor mode
     const handleWrapperMouseDownCapture = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -2991,8 +3353,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               drawingId: hit.drawingId,
               handleKey: hit.handleKey,
               startAnchor,
+              startScreen: { x: sx, y: sy },
               origDrawing: JSON.parse(JSON.stringify(orig)),
             };
+            lastPointerClientRef.current = { clientX: e.clientX, clientY: e.clientY };
+            shiftPressedRef.current = e.shiftKey;
           }
         }
       } else {
@@ -3257,6 +3622,13 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             ref={drawCanvasRef}
             onMouseDown={handleDrawMouseDown}
             onMouseMove={handleDrawMouseMove}
+            onMouseLeave={handleDrawMouseLeave}
+            onContextMenu={(e) => {
+              if (tempShapeRef.current) {
+                e.preventDefault();
+                cancelPendingDrawing();
+              }
+            }}
             onDoubleClick={commitPathDrawing}
             className={`absolute inset-0 w-full h-full z-[3] ${
               !isCursorTool(activeTool)
