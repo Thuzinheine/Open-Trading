@@ -65,7 +65,7 @@ import {
   saveWatchlistPrefs,
 } from './utils/storage';
 import { ALL_TOOLS_MAP } from './utils/drawingToolsCatalog';
-import { TopBar } from './components/TopBar';
+import { TopBar, SnapshotAction } from './components/TopBar';
 import { LeftToolbar } from './components/LeftToolbar';
 import { ChartWorkspace, ChartWorkspaceHandle } from './components/ChartWorkspace';
 import { RightSidebar } from './components/RightSidebar';
@@ -130,8 +130,22 @@ export default function App() {
   const [stayInDrawingMode, setStayInDrawingMode] = useState<boolean>(false);
   const [lockDrawings, setLockDrawings] = useState<boolean>(initialToolPrefs.lockDrawings);
 
-  // Chart state (restores last opened coin & timeframe)
-  const initialChart = useMemo(() => loadLastChartState(), []);
+  // Chart state (restores URL ?symbol=&interval= if shared, otherwise last opened coin & timeframe)
+  const initialChart = useMemo(() => {
+    const saved = loadLastChartState();
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const qSym = params.get('symbol')?.trim().toUpperCase();
+      const qTf = params.get('interval')?.trim() as Timeframe | null;
+      const validTfs: Timeframe[] = ['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'];
+      return {
+        symbol: qSym && /^[A-Z0-9]{4,16}$/.test(qSym) ? qSym : saved.symbol,
+        interval: qTf && validTfs.includes(qTf) ? qTf : saved.interval,
+      };
+    } catch {
+      return saved;
+    }
+  }, []);
   const [currentSymbol, setCurrentSymbol] = useState<string>(initialChart.symbol);
   const [interval, setIntervalState] = useState<Timeframe>(initialChart.interval);
   const [chartDataMeta, setChartDataMeta] = useState<{ sym: string; tf: Timeframe }>({
@@ -1282,7 +1296,135 @@ export default function App() {
     setAlertModalOpen(true);
   }, []);
 
-  // TradingView Keyboard Shortcuts: Alt+T, Alt+H, Alt+J, Alt+V, Alt+C, Del/Backspace, Ctrl+K, Ctrl+Z/Y, Esc
+  const handleSnapshotAction = useCallback(
+    async (action: SnapshotAction) => {
+      const copyTextFallback = async (text: string): Promise<boolean> => {
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(text);
+            return true;
+          }
+        } catch {
+          // fallback below
+        }
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          return ok;
+        } catch {
+          return false;
+        }
+      };
+
+      if (action === 'copy_link') {
+        const url = new URL(window.location.href);
+        url.searchParams.set('symbol', currentSymbol);
+        url.searchParams.set('interval', interval);
+        const ok = await copyTextFallback(url.toString());
+        if (ok) {
+          pushToast(
+            'Link Copied',
+            `${currentSymbol} (${interval.toUpperCase()}) chart link copied to clipboard.`,
+            'success'
+          );
+        } else {
+          pushToast('Copy Failed', 'Could not access clipboard in this browser.', 'warning');
+        }
+        return;
+      }
+
+      const snap = await chartWorkspaceRef.current?.captureSnapshot();
+      if (!snap) {
+        pushToast('Snapshot Failed', 'Chart is not ready yet. Please try again.', 'warning');
+        return;
+      }
+
+      if (action === 'download') {
+        const a = document.createElement('a');
+        a.href = snap.dataUrl;
+        a.download = snap.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        pushToast('Image Downloaded', `Saved ${snap.filename}`, 'success');
+        return;
+      }
+
+      if (action === 'copy') {
+        try {
+          if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': snap.blob })]);
+            pushToast('Image Copied', 'Chart snapshot copied to clipboard.', 'success');
+            return;
+          }
+        } catch {
+          // Graceful fallback if clipboard image write is restricted
+        }
+        const a = document.createElement('a');
+        a.href = snap.dataUrl;
+        a.download = snap.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        pushToast(
+          'Image Downloaded',
+          'Clipboard image copy is restricted here — saved PNG instead.',
+          'info'
+        );
+        return;
+      }
+
+      if (action === 'open_tab') {
+        const objUrl = URL.createObjectURL(snap.blob);
+        const a = document.createElement('a');
+        a.href = objUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+        pushToast('Opened in New Tab', `Opened ${snap.filename}`, 'info');
+        return;
+      }
+
+      if (action === 'post_x') {
+        try {
+          if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': snap.blob })]);
+          }
+        } catch {
+          // ignore if blocked
+        }
+        const baseAsset = currentSymbol.replace(/USDT$|BUSD$|USD$/, '');
+        const tweetText = encodeURIComponent(
+          `$${baseAsset} (${currentSymbol} · ${interval.toUpperCase()}) chart snapshot`
+        );
+        const intentUrl = `https://x.com/intent/tweet?text=${tweetText}`;
+        const a = document.createElement('a');
+        a.href = intentUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        pushToast(
+          'Ready to Post on X',
+          'Chart snapshot copied — paste (Ctrl+V) directly into your post.',
+          'success'
+        );
+      }
+    },
+    [currentSymbol, interval, pushToast]
+  );
+
+  // TradingView Keyboard Shortcuts: Alt+T/H/J/V/C/S, Ctrl+Alt+S, Ctrl+Shift+S, Del/Backspace, Ctrl+K, Ctrl+Z/Y, Esc
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -1306,7 +1448,7 @@ export default function App() {
       }
       if (isInput) return;
 
-      if (e.altKey) {
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
         const k = e.key.toLowerCase();
         if (k === 't') {
           e.preventDefault();
@@ -1357,6 +1499,23 @@ export default function App() {
           setAlertModalOpen(true);
           return;
         }
+        if (k === 's') {
+          e.preventDefault();
+          void handleSnapshotAction('copy_link');
+          return;
+        }
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void handleSnapshotAction('download');
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        void handleSnapshotAction('copy');
+        return;
       }
 
       if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 'w') {
@@ -1387,7 +1546,15 @@ export default function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [handleUndo, handleRedo, handleDeleteDrawing, selectedDrawingId, lockDrawings, currentDrawings]);
+  }, [
+    handleUndo,
+    handleRedo,
+    handleDeleteDrawing,
+    handleSnapshotAction,
+    selectedDrawingId,
+    lockDrawings,
+    currentDrawings,
+  ]);
 
   const handleUpdateWatchlistItems = useCallback(
     (listId: string, updater: (items: WatchlistItem[]) => WatchlistItem[]) => {
@@ -1740,7 +1907,7 @@ export default function App() {
         onUndo={handleUndo}
         onRedo={handleRedo}
         barCount={candles.length}
-        onSnapshot={() => chartWorkspaceRef.current?.takeSnapshot()}
+        onSnapshot={(action) => void handleSnapshotAction(action)}
         onToggleRightPanel={() => setRightVisible((v) => !v)}
         onSaveWorkspace={() => {
           saveWatchlistCollections(watchlists);

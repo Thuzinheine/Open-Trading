@@ -108,12 +108,19 @@ import { SettingsTab } from './DrawingSettingsModal';
 import { ColorPalettePopover } from './ColorPalettePopover';
 import { CoinLogo, FlagRibbon } from './CoinLogo';
 
+export interface SnapshotCaptureResult {
+  blob: Blob;
+  dataUrl: string;
+  filename: string;
+}
+
 export interface ChartWorkspaceHandle {
   resetZoom: () => void;
   zoomOut: () => void;
   setVisibleBars: (bars: number) => void;
   fitContent: () => void;
   takeSnapshot: () => void;
+  captureSnapshot: () => Promise<SnapshotCaptureResult | null>;
   setScaleMode: (mode: ScaleMode) => void;
 }
 
@@ -458,6 +465,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         height: number;
       }>
     >([]);
+    const scaleBadgesRef = useRef(scaleBadges);
+    scaleBadgesRef.current = scaleBadges;
     const scaleBadgesSigRef = useRef('');
     const [showScrollToRecent, setShowScrollToRecent] = useState(false);
     const [rightScaleWidth, setRightScaleWidth] = useState(70);
@@ -893,6 +902,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       if (!chart || !series || !canvas || !arr.length) {
         if (scaleBadgesSigRef.current !== '') {
           scaleBadgesSigRef.current = '';
+          scaleBadgesRef.current = [];
           setScaleBadges([]);
         }
         return;
@@ -1190,6 +1200,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         .join('|');
       if (sig !== scaleBadgesSigRef.current) {
         scaleBadgesSigRef.current = sig;
+        scaleBadgesRef.current = nextBadges;
         setScaleBadges(nextBadges);
       }
     }, [isReplayMode]);
@@ -2604,19 +2615,70 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       fitContent: () => {
         chartRef.current?.timeScale().fitContent();
       },
-      takeSnapshot: () => {
+      captureSnapshot: async (): Promise<SnapshotCaptureResult | null> => {
         const chart = chartRef.current;
-        if (!chart) return;
-        const base = chart.takeScreenshot();
-        const out = document.createElement('canvas');
-        out.width = base.width;
-        out.height = base.height;
-        const ctx = out.getContext('2d');
-        if (!ctx) return;
+        if (!chart) return null;
 
-        const bg1 = chartSettings.canvas.backgroundColor || (isDarkMode ? '#131722' : '#ffffff');
+        // Refresh badges & overlays immediately so snapshot reflects exact latest frame
+        updateCountdownPos();
+
+        const base = chart.takeScreenshot();
+        if (!base || base.width === 0 || base.height === 0) return null;
+
+        const cssW = wrapperRef.current?.clientWidth || base.width;
+        const cssH = wrapperRef.current?.clientHeight || base.height;
+        const scaleX = base.width / Math.max(1, cssW);
+        const scaleY = base.height / Math.max(1, cssH);
+
+        const padX = 8;
+        const headerH = 24;
+        const footerH = 34;
+        const totalCssW = cssW + padX * 2;
+        const totalCssH = headerH + cssH + footerH;
+
+        const out = document.createElement('canvas');
+        out.width = Math.round(totalCssW * scaleX);
+        out.height = Math.round(totalCssH * scaleY);
+        const ctx = out.getContext('2d');
+        if (!ctx) return null;
+
+        const TV_SNAP_FONT =
+          '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif';
+        const frameBg = isDarkMode ? '#131722' : '#ffffff';
+        const frameText = isDarkMode ? '#d1d4dc' : '#131722';
+        const frameMuted = isDarkMode ? '#868993' : '#787b86';
+        const frameBorder = isDarkMode ? '#2a2e39' : '#e0e3eb';
+
+        // 1. Outer TradingView snapshot margin background
+        ctx.save();
+        ctx.scale(scaleX, scaleY);
+        ctx.fillStyle = frameBg;
+        ctx.fillRect(0, 0, totalCssW, totalCssH);
+
+        // 2. Top metadata bar ("Published on TradePulse, Nov 28, 2026 12:21 UTC")
+        const now = new Date();
+        const months = [
+          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        ];
+        const utcStr = `${months[now.getUTCMonth()]} ${now.getUTCDate()}, ${now.getUTCFullYear()} ${String(
+          now.getUTCHours()
+        ).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')} UTC`;
+        ctx.font = `400 11px ${TV_SNAP_FONT}`;
+        ctx.fillStyle = frameText;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Published on TradePulse, ${utcStr}`, padX, headerH / 2 + 1);
+
+        // 3. Chart pane background inside (padX, headerH, cssW, cssH)
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(padX, headerH, cssW, cssH);
+        ctx.clip();
+
+        const bg1 = chartSettings.canvas.backgroundColor || frameBg;
         if (chartSettings.canvas.backgroundType === 'gradient') {
-          const grad = ctx.createLinearGradient(0, 0, 0, out.height);
+          const grad = ctx.createLinearGradient(0, headerH, 0, headerH + cssH);
           grad.addColorStop(0, bg1);
           grad.addColorStop(
             1,
@@ -2626,21 +2688,197 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         } else {
           ctx.fillStyle = bg1;
         }
-        ctx.fillRect(0, 0, out.width, out.height);
+        ctx.fillRect(padX, headerH, cssW, cssH);
+
+        // Optional Chart Watermark
+        if (chartSettings.canvas.watermarkMode !== 'off') {
+          const placement = chartSettings.scales.scalesPlacement;
+          const scW = chart.priceScale(placement).width() || rightScaleWidth || 70;
+          const plotCx =
+            placement === 'left' ? padX + scW + (cssW - scW) / 2 : padX + (cssW - scW) / 2;
+          const plotCy = headerH + (cssH - 26) / 2;
+          ctx.save();
+          ctx.fillStyle = chartSettings.canvas.watermarkColor || 'rgba(120,123,134,0.12)';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.font = `700 44px ${TV_SNAP_FONT}`;
+          const wmTitle =
+            chartSettings.canvas.watermarkMode === 'replay'
+              ? `${symbol} · REPLAY`
+              : `${symbol}, ${interval.toUpperCase()}`;
+          ctx.fillText(wmTitle, plotCx, plotCy);
+          ctx.restore();
+        }
+
+        // 4. Composite HiDPI chart layers in exact visual z-order
         if (cloudCanvasRef.current) {
-          ctx.drawImage(cloudCanvasRef.current, 0, 0, out.width, out.height);
+          ctx.drawImage(cloudCanvasRef.current, padX, headerH, cssW, cssH);
         }
         if (underDrawCanvasRef.current) {
-          ctx.drawImage(underDrawCanvasRef.current, 0, 0, out.width, out.height);
+          ctx.drawImage(underDrawCanvasRef.current, padX, headerH, cssW, cssH);
         }
-        ctx.drawImage(base, 0, 0);
+        ctx.drawImage(base, padX, headerH, cssW, cssH);
         if (drawCanvasRef.current) {
-          ctx.drawImage(drawCanvasRef.current, 0, 0, out.width, out.height);
+          ctx.drawImage(drawCanvasRef.current, padX, headerH, cssW, cssH);
         }
-        const a = document.createElement('a');
-        a.href = out.toDataURL('image/png');
-        a.download = `${symbol}-${interval}.png`;
-        a.click();
+
+        // 5. Top-left Chart Status Line (Symbol · TF · Exchange + O H L C + Change)
+        const arr = displayCandlesRef.current;
+        const lastBar = arr.length ? arr[arr.length - 1] : null;
+        const prevBar = arr.length > 1 ? arr[arr.length - 2] : lastBar;
+        const prec =
+          chartSettings.symbol.precision === 'default'
+            ? getPrecision(lastBar?.close ?? 1)
+            : parseInt(chartSettings.symbol.precision, 10);
+
+        const tfLabel = interval.toUpperCase();
+        const pairDisplayName =
+          symbol.endsWith('USDT') && !symbolMeta.name.includes('/')
+            ? `${symbolMeta.name} / TetherUS`
+            : symbolMeta.name;
+        const titleStr =
+          chartSettings.statusLine.titleMode === 'ticker'
+            ? `${symbol} · ${tfLabel}`
+            : chartSettings.statusLine.titleMode === 'description'
+            ? `${pairDisplayName} (${symbol}) · ${tfLabel} · Binance Spot`
+            : `${pairDisplayName} · ${tfLabel} · Binance`;
+
+        const placement = chartSettings.scales.scalesPlacement;
+        const scaleW = chart.priceScale(placement).width() || rightScaleWidth || 70;
+        const statusStartX = placement === 'left' ? padX + scaleW + 10 : padX + 10;
+        const statusY = headerH + 13;
+        let curX = statusStartX;
+
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+
+        if (chartSettings.statusLine.title) {
+          ctx.font = `400 12px ${TV_SNAP_FONT}`;
+          ctx.fillStyle = frameText;
+          ctx.fillText(titleStr, curX, statusY);
+          curX += ctx.measureText(titleStr).width + 10;
+        }
+
+        if (lastBar) {
+          const baseRef = prevBar ? prevBar.close : lastBar.open;
+          const diff = lastBar.close - baseRef;
+          const pct = baseRef > 0 ? (diff / baseRef) * 100 : 0;
+          const sign = diff >= 0 ? '+' : '−';
+          const absDiff = fmtPrice(Math.abs(diff), prec);
+          const absPct = Math.abs(pct).toFixed(2);
+
+          ctx.font = `400 12px ${TV_SNAP_FONT}`;
+          if (chartSettings.statusLine.ohlcValues) {
+            const ohlcParts = [
+              `O${fmtPrice(lastBar.open, prec)}`,
+              `H${fmtPrice(lastBar.high, prec)}`,
+              `L${fmtPrice(lastBar.low, prec)}`,
+              `C${fmtPrice(lastBar.close, prec)}`,
+            ];
+            for (const part of ohlcParts) {
+              ctx.fillStyle = frameText;
+              ctx.fillText(part, curX, statusY);
+              curX += ctx.measureText(part).width + 7;
+            }
+          }
+          if (chartSettings.statusLine.barChangeValues) {
+            const chgText = `${sign}${absDiff} (${sign}${absPct}%)`;
+            ctx.fillStyle = frameText;
+            ctx.fillText(chgText, curX, statusY);
+          }
+        }
+
+        // 6. All Collision-Free Price Scale Colored Badges (Current Price + Countdown, EMAs, Vol, HLines, Positions, Alerts)
+        const badges = scaleBadgesRef.current;
+        const badgeW = Math.max(64, scaleW - 1);
+        const badgeX = placement === 'left' ? padX : padX + cssW - badgeW;
+        const badgeFontPx = chartSettings.canvas.scaleFontSize || 11;
+
+        for (const badge of badges) {
+          const by = headerH + badge.top;
+          ctx.fillStyle = badge.bgColor;
+          ctx.fillRect(badgeX, by, badgeW, badge.height);
+
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+
+          if (badge.subText) {
+            ctx.font = `600 ${badgeFontPx}px ${TV_SNAP_FONT}`;
+            ctx.fillText(badge.text, badgeX + 7, by + 9.5);
+            ctx.font = `500 ${badgeFontPx}px ${TV_SNAP_FONT}`;
+            ctx.fillText(badge.subText, badgeX + 7, by + 23);
+          } else {
+            ctx.font = `600 ${badgeFontPx}px ${TV_SNAP_FONT}`;
+            ctx.fillText(badge.text, badgeX + 7, by + badge.height / 2 + 0.5);
+          }
+        }
+
+        ctx.restore(); // end chart clip
+
+        // 7. Clean 1px hairline border framing the chart area (exact TradingView look)
+        ctx.strokeStyle = frameBorder;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(padX + 0.5, headerH + 0.5, cssW - 1, cssH - 1);
+
+        // 8. Bottom-left Brand Footer Mark (crisp monochrome mark + TradePulse wordmark)
+        const footerCenterY = headerH + cssH + footerH / 2 + 1;
+        const logoX = padX + 2;
+        ctx.fillStyle = frameText;
+        // Minimal geometric TradingView-style mark (bar + dot + angled pulse slash)
+        ctx.fillRect(logoX, footerCenterY - 5, 9, 2.6);
+        ctx.fillRect(logoX + 4.4, footerCenterY - 5, 2.8, 10.5);
+        ctx.beginPath();
+        ctx.arc(logoX + 10.8, footerCenterY - 3.5, 1.7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(logoX + 14.5, footerCenterY - 5);
+        ctx.lineTo(logoX + 17.5, footerCenterY - 5);
+        ctx.lineTo(logoX + 13.8, footerCenterY + 5.5);
+        ctx.lineTo(logoX + 10.8, footerCenterY + 5.5);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.font = `700 13.5px ${TV_SNAP_FONT}`;
+        ctx.fillStyle = frameText;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('TradePulse', logoX + 22, footerCenterY + 0.5);
+
+        // Subtle right-aligned symbol/timeframe caption in footer
+        ctx.font = `400 11px ${TV_SNAP_FONT}`;
+        ctx.fillStyle = frameMuted;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${symbol} · ${tfLabel}`, padX + cssW - 2, footerCenterY + 0.5);
+
+        ctx.restore();
+
+        // Format TradingView-style timestamped filename: BTCUSDT_2026-11-28_18-51-49.png
+        const pad2 = (n: number) => String(n).padStart(2, '0');
+        const stamp = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}_${pad2(
+          now.getHours()
+        )}-${pad2(now.getMinutes())}-${pad2(now.getSeconds())}`;
+        const filename = `${symbol}_${stamp}.png`;
+        const dataUrl = out.toDataURL('image/png');
+
+        const blob = await new Promise<Blob | null>((resolve) =>
+          out.toBlob((b) => resolve(b), 'image/png')
+        );
+        if (!blob) return null;
+
+        return { blob, dataUrl, filename };
+      },
+      takeSnapshot: () => {
+        const handle = ref && typeof ref !== 'function' ? ref.current : null;
+        if (handle) {
+          void handle.captureSnapshot().then((res) => {
+            if (!res) return;
+            const a = document.createElement('a');
+            a.href = res.dataUrl;
+            a.download = res.filename;
+            a.click();
+          });
+        }
       },
     }));
 

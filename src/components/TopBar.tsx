@@ -12,8 +12,14 @@ import {
   ChevronDown,
   BarChart2,
   Check,
+  Download,
+  Copy,
+  Link2,
+  ExternalLink,
 } from 'lucide-react';
 import { ChartType, Timeframe, WatchlistItem } from '../types/trading';
+
+export type SnapshotAction = 'download' | 'copy' | 'copy_link' | 'open_tab' | 'post_x';
 import {
   AlertClockSparkleIcon,
   CornerFullscreenIcon,
@@ -44,7 +50,7 @@ interface TopBarProps {
   onUndo: () => void;
   onRedo: () => void;
   barCount: number;
-  onSnapshot: () => void;
+  onSnapshot: (action: SnapshotAction) => void;
   onOpenSettings: () => void;
   onToggleRightPanel?: () => void;
   onSaveWorkspace?: () => void;
@@ -112,24 +118,37 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [tfMenuOpen, setTfMenuOpen] = useState(false);
   const [ctMenuOpen, setCtMenuOpen] = useState(false);
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const [snapMenuOpen, setSnapMenuOpen] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const tfRef = useRef<HTMLDivElement>(null);
   const ctRef = useRef<HTMLDivElement>(null);
   const saveRef = useRef<HTMLDivElement>(null);
+  const snapRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (tfRef.current && !tfRef.current.contains(e.target as Node)) setTfMenuOpen(false);
       if (ctRef.current && !ctRef.current.contains(e.target as Node)) setCtMenuOpen(false);
       if (saveRef.current && !saveRef.current.contains(e.target as Node)) setSaveMenuOpen(false);
+      if (snapRef.current && !snapRef.current.contains(e.target as Node)) setSnapMenuOpen(false);
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setTfMenuOpen(false);
+        setCtMenuOpen(false);
+        setSaveMenuOpen(false);
+        setSnapMenuOpen(false);
+      }
     };
     const handleFs = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('fullscreenchange', handleFs);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('fullscreenchange', handleFs);
     };
   }, []);
@@ -427,7 +446,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                 type="button"
                 onClick={() => {
                   setSaveMenuOpen(false);
-                  onSnapshot();
+                  onSnapshot('download');
                 }}
                 className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] cursor-pointer"
               >
@@ -470,14 +489,123 @@ export const TopBar: React.FC<TopBarProps> = ({
           <CornerFullscreenIcon className="w-[17px] h-[17px]" />
         </button>
 
-        <button
-          type="button"
-          onClick={onSnapshot}
-          className="hidden sm:inline-flex h-8 w-8 rounded-md hover:bg-[var(--bg-hover)] items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer"
-          title="Take a Snapshot"
-        >
-          <Camera className="w-[17px] h-[17px]" strokeWidth={1.5} />
-        </button>
+        {/* Camera / Chart Snapshot Dropdown (Exact TradingView Menu) */}
+        <div className="relative hidden sm:block" ref={snapRef}>
+          <button
+            type="button"
+            onClick={() => setSnapMenuOpen((v) => !v)}
+            className={`h-8 w-8 rounded-md hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer ${
+              snapMenuOpen ? 'bg-[var(--bg-hover)]' : ''
+            }`}
+            title="Take a snapshot"
+            aria-haspopup="menu"
+            aria-expanded={snapMenuOpen}
+          >
+            <Camera className="w-[17px] h-[17px]" strokeWidth={1.5} />
+          </button>
+
+          {snapMenuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 top-[38px] w-[262px] bg-[var(--bg-surface)] border border-black/[0.08] dark:border-white/[0.12] rounded-[10px] shadow-[0_8px_28px_rgba(0,0,0,0.14)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)] py-2 z-50 select-none"
+            >
+              <div className="px-4 pt-1 pb-2 text-[11px] font-medium tracking-[0.06em] uppercase text-[var(--text-muted)]">
+                Chart Snapshot
+              </div>
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setSnapMenuOpen(false);
+                  onSnapshot('download');
+                }}
+                className="w-full px-4 py-[9px] flex items-center justify-between gap-3 text-[13.5px] text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-3">
+                  <Download className="w-[18px] h-[18px] text-[var(--text-main)] shrink-0" strokeWidth={1.55} />
+                  <span>Download image</span>
+                </span>
+                <span className="text-[12px] text-[var(--text-muted)] whitespace-nowrap">
+                  Ctrl + Alt + S
+                </span>
+              </button>
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setSnapMenuOpen(false);
+                  onSnapshot('copy');
+                }}
+                className="w-full px-4 py-[9px] flex items-center justify-between gap-3 text-[13.5px] text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-3">
+                  <Copy className="w-[18px] h-[18px] text-[var(--text-main)] shrink-0" strokeWidth={1.55} />
+                  <span>Copy image</span>
+                </span>
+                <span className="text-[12px] text-[var(--text-muted)] whitespace-nowrap">
+                  Ctrl + Shift + S
+                </span>
+              </button>
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setSnapMenuOpen(false);
+                  onSnapshot('copy_link');
+                }}
+                className="w-full px-4 py-[9px] flex items-center justify-between gap-3 text-[13.5px] text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-3">
+                  <Link2 className="w-[18px] h-[18px] text-[var(--text-main)] shrink-0" strokeWidth={1.55} />
+                  <span>Copy link</span>
+                </span>
+                <span className="text-[12px] text-[var(--text-muted)] whitespace-nowrap">
+                  Alt + S
+                </span>
+              </button>
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setSnapMenuOpen(false);
+                  onSnapshot('open_tab');
+                }}
+                className="w-full px-4 py-[9px] flex items-center justify-between gap-3 text-[13.5px] text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-3">
+                  <ExternalLink className="w-[18px] h-[18px] text-[var(--text-main)] shrink-0" strokeWidth={1.55} />
+                  <span>Open in new tab</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setSnapMenuOpen(false);
+                  onSnapshot('post_x');
+                }}
+                className="w-full px-4 py-[9px] flex items-center justify-between gap-3 text-[13.5px] text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-3">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="w-[17px] h-[17px] text-[var(--text-main)] shrink-0"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                  <span>Post image</span>
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
 
         <button
           type="button"
