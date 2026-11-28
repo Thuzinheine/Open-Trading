@@ -13,7 +13,16 @@ export interface CoordBridge {
   timeToLogical: (time: number) => number | null;
   width: number;
   height: number;
+  plotLeft?: number;
+  plotWidth?: number;
   intervalSec: number;
+}
+
+function getHlineHandleX(bridge: CoordBridge): number {
+  const plotLeft = bridge.plotLeft ?? 0;
+  const plotW = bridge.plotWidth ?? Math.max(80, bridge.width - 70);
+  const inset = Math.min(112, Math.max(62, Math.round(plotW * 0.11)));
+  return plotLeft + Math.max(24, plotW - inset);
 }
 
 export interface HandleHit {
@@ -295,7 +304,7 @@ export function getDrawingHandles(s: DrawingObject, bridge: CoordBridge): Handle
   const handles: HandleHit[] = [];
   if (s.type === 'hline' && s.price !== undefined) {
     const y = bridge.priceToY(s.price);
-    if (y !== null) handles.push({ drawingId: s.id, handleKey: 'price', x: bridge.width * 0.45, y });
+    if (y !== null) handles.push({ drawingId: s.id, handleKey: 'price', x: getHlineHandleX(bridge), y });
     return handles;
   }
   if (s.type === 'vline' && s.time !== undefined) {
@@ -520,8 +529,10 @@ export function renderDrawingObject(
       ctx.lineTo(width, y);
       ctx.stroke();
       ctx.setLineDash([]);
-      drawBoxText(ctx, s, 16, width - 80, y, y);
-      if (showHandles) drawHandleDot(ctx, width * 0.45, y, isSelected);
+      const pLeft = bridge.plotLeft ?? 0;
+      const pRight = pLeft + (bridge.plotWidth ?? width - 70);
+      drawBoxText(ctx, s, pLeft + 14, pRight - 14, y, y);
+      if (showHandles) drawHandleDot(ctx, getHlineHandleX(bridge), y, isSelected);
       break;
     }
 

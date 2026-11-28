@@ -1245,16 +1245,27 @@ export default function App() {
   }, []);
 
   const handleReorderDrawing = useCallback(
-    (id: string, dir: 'front' | 'back') => {
+    (id: string, dir: 'front' | 'back' | 'forward' | 'backward') => {
       setDrawingsMap((prev) => {
         const list = prev[currentSymbol] || [];
-        const target = list.find((d) => d.id === id);
-        if (!target) return prev;
-        const rest = list.filter((d) => d.id !== id);
-        return {
-          ...prev,
-          [currentSymbol]: dir === 'front' ? [...rest, target] : [target, ...rest],
-        };
+        const idx = list.findIndex((d) => d.id === id);
+        if (idx === -1) return prev;
+        const target = list[idx];
+        if (dir === 'front') {
+          const rest = list.filter((d) => d.id !== id);
+          return { ...prev, [currentSymbol]: [...rest, { ...target, zOrder: 'front' as const }] };
+        }
+        if (dir === 'back') {
+          const rest = list.filter((d) => d.id !== id);
+          return { ...prev, [currentSymbol]: [{ ...target, zOrder: 'back' as const }, ...rest] };
+        }
+        const next = [...list];
+        if (dir === 'forward' && idx < next.length - 1) {
+          [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+        } else if (dir === 'backward' && idx > 0) {
+          [next[idx], next[idx - 1]] = [next[idx - 1], next[idx]];
+        }
+        return { ...prev, [currentSymbol]: next };
       });
     },
     [currentSymbol]

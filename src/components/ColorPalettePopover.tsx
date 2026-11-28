@@ -6,6 +6,7 @@ interface ColorPalettePopoverProps {
   onChange: (nextColor: string) => void;
   onClose?: () => void;
   align?: 'left' | 'right';
+  inline?: boolean;
   extraAction?: {
     label: string;
     onClick: () => void;
@@ -115,6 +116,7 @@ export const ColorPalettePopover: React.FC<ColorPalettePopoverProps> = ({
   onChange,
   onClose,
   align = 'left',
+  inline = false,
   extraAction,
 }) => {
   const { hex: activeHex, alpha } = parseColor(value);
@@ -165,9 +167,13 @@ export const ColorPalettePopover: React.FC<ColorPalettePopoverProps> = ({
     <div
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className={`absolute ${
-        align === 'right' ? 'right-0' : 'left-0'
-      } top-9 w-[262px] p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] shadow-2xl z-50 select-none`}
+      className={
+        inline
+          ? 'w-full select-none'
+          : `absolute ${
+              align === 'right' ? 'right-0' : 'left-0'
+            } top-9 w-[262px] p-3 rounded-xl bg-[var(--bg-surface)] border border-[var(--border)] shadow-2xl z-50 select-none`
+      }
     >
       {/* Row 1: Grayscale */}
       <div className="grid grid-cols-10 gap-[4px] mb-[5px]">

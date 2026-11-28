@@ -46,6 +46,9 @@ import {
   ArrowDownToLine,
   Check,
   Calendar,
+  AlarmClockPlus,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
 import { HexSettingsIcon } from './TradingViewIcons';
 import {
@@ -155,7 +158,7 @@ interface ChartWorkspaceProps {
   onCloneDrawing: (id: string) => void;
   onOpenDrawingSettings: (id: string, tab?: SettingsTab) => void;
   onAddAlertFromDrawing: (d: DrawingObject) => void;
-  onReorderDrawing: (id: string, dir: 'front' | 'back') => void;
+  onReorderDrawing: (id: string, dir: 'front' | 'back' | 'forward' | 'backward') => void;
   onRequestOlderHistory: () => void;
   alerts: PriceAlert[];
   onDeleteAlert?: (id: string) => void;
@@ -262,6 +265,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const wrapperRef = useRef<HTMLDivElement>(null);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const cloudCanvasRef = useRef<HTMLCanvasElement>(null);
+    const underDrawCanvasRef = useRef<HTMLCanvasElement>(null);
     const drawCanvasRef = useRef<HTMLCanvasElement>(null);
     const rsiContainerRef = useRef<HTMLDivElement>(null);
 
@@ -391,6 +395,17 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       editId?: string;
       value: string;
     } | null>(null);
+    const [drawingContextMenu, setDrawingContextMenu] = useState<{
+      drawingId: string;
+      x: number;
+      y: number;
+    } | null>(null);
+    const [ctxSubmenu, setCtxSubmenu] = useState<'none' | 'template' | 'order' | 'visibility'>(
+      'none'
+    );
+    const [objectTreeOpen, setObjectTreeOpen] = useState(false);
+    const copiedDrawingRef = useRef<DrawingObject | null>(null);
+    const ctxMenuRef = useRef<HTMLDivElement>(null);
 
     const [indValues, setIndValues] = useState<{
       sma1?: number;
@@ -524,6 +539,10 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       const series = candleSeriesRef.current;
       const canvas = drawCanvasRef.current;
       if (!chart || !series || !canvas) return null;
+      const placement = chartSettingsRef.current.scales.scalesPlacement;
+      const scaleW = chart.priceScale(placement).width() || 70;
+      const plotLeft = placement === 'left' ? scaleW : 0;
+      const plotWidth = Math.max(0, canvas.width - scaleW);
       return {
         ptToScreen: (pt: AnchorPoint) => {
           const logical = timeToLogical(pt.time);
@@ -546,6 +565,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         timeToLogical,
         width: canvas.width,
         height: canvas.height,
+        plotLeft,
+        plotWidth,
         intervalSec: INTERVAL_SECONDS[intervalRef.current] || 86400,
       };
     }, [timeToLogical]);
@@ -681,15 +702,22 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       }
     }, []);
 
-    // Redraw Drawing Canvas (all saved drawings + active preview + zoom box)
+    // Redraw Drawing Canvases:
+    // - underDrawCanvasRef (z-[1], behind candles): all finalized idle drawings
+    // - drawCanvasRef (z-[3], above candles): active in-progress drawing, hovered/dragged drawings, or drawings explicitly brought to front
     const redrawOverlay = useCallback(() => {
       const canvas = drawCanvasRef.current;
+      const underCanvas = underDrawCanvasRef.current;
       const bridge = buildCoordBridge();
       if (!canvas || !bridge) return;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
+      const underCtx = underCanvas ? underCanvas.getContext('2d') : null;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (underCanvas && underCtx) {
+        underCtx.clearRect(0, 0, underCanvas.width, underCanvas.height);
+      }
 
       const chart = chartRef.current;
       const placement = chartSettingsRef.current.scales.scalesPlacement;
@@ -704,18 +732,33 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         ctx.rect(plotLeft, 0, plotWidth, plotHeight);
         ctx.clip();
 
+        if (underCtx) {
+          underCtx.save();
+          underCtx.beginPath();
+          underCtx.rect(plotLeft, 0, plotWidth, plotHeight);
+          underCtx.clip();
+        }
+
         const visibleDrawings = drawingsRef.current.filter((d) =>
           isDrawingVisibleOnTimeframe(d, intervalRef.current)
         );
-        visibleDrawings.forEach((d) =>
+        visibleDrawings.forEach((d) => {
+          const isSelected = d.id === selectedIdRef.current;
+          const isHovered = d.id === hoveredDrawingIdRef.current;
+          const isDragging = dragEditRef.current?.drawingId === d.id;
+          // Appear on top of candles ONLY while actively hovered, dragged, or explicitly brought to front.
+          // Once finished and mouse is in free space, render cleanly behind candles!
+          const renderOnTop = isHovered || isDragging || d.zOrder === 'front' || !underCtx;
           renderDrawingObject(
-            ctx,
+            renderOnTop ? ctx : underCtx!,
             d,
             bridge,
-            d.id === selectedIdRef.current,
-            d.id === hoveredDrawingIdRef.current
-          )
-        );
+            isSelected,
+            isHovered
+          );
+        });
+
+        // In-progress drawing ALWAYS renders on top of candles while user is drawing
         if (tempShapeRef.current) {
           renderDrawingObject(ctx, tempShapeRef.current, bridge, true, false, true);
         }
@@ -750,6 +793,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             ctx.restore();
           }
         }
+        if (underCtx) underCtx.restore();
         ctx.restore();
       }
 
@@ -1406,6 +1450,10 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             cloudCanvasRef.current.width = width;
             cloudCanvasRef.current.height = height;
           }
+          if (underDrawCanvasRef.current) {
+            underDrawCanvasRef.current.width = width;
+            underDrawCanvasRef.current.height = height;
+          }
           if (drawCanvasRef.current) {
             drawCanvasRef.current.width = width;
             drawCanvasRef.current.height = height;
@@ -1601,10 +1649,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
 
       chart.applyOptions({
         layout: {
-          background:
-            cv.backgroundType === 'gradient'
-              ? { type: ColorType.VerticalGradient, topColor: bg1, bottomColor: bg2 }
-              : { type: ColorType.Solid, color: cv.backgroundColor ? bg1 : 'transparent' },
+          background: { type: ColorType.Solid, color: 'transparent' },
           textColor: txtCol,
           fontFamily: '-apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif',
           fontSize: cv.scaleFontSize || 11,
@@ -2540,6 +2585,9 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         if (cloudCanvasRef.current) {
           ctx.drawImage(cloudCanvasRef.current, 0, 0, out.width, out.height);
         }
+        if (underDrawCanvasRef.current) {
+          ctx.drawImage(underDrawCanvasRef.current, 0, 0, out.width, out.height);
+        }
         ctx.drawImage(base, 0, 0);
         if (drawCanvasRef.current) {
           ctx.drawImage(drawCanvasRef.current, 0, 0, out.width, out.height);
@@ -2954,8 +3002,57 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           commitPathDrawing();
           return;
         }
-        if (e.key === 'Escape' && (tempShapeRef.current || zoomBoxRef.current)) {
-          cancelPendingDrawing();
+        if (e.key === 'Escape') {
+          setDrawingContextMenu(null);
+          setCtxSubmenu('none');
+          if (tempShapeRef.current || zoomBoxRef.current) {
+            cancelPendingDrawing();
+          }
+          return;
+        }
+        const tag = (e.target as HTMLElement | null)?.tagName;
+        const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+        if (isTyping) return;
+
+        // Alt + A: Add alert on selected drawing
+        if (e.altKey && (e.key === 'a' || e.key === 'A') && selectedIdRef.current) {
+          const sel = drawingsRef.current.find((d) => d.id === selectedIdRef.current);
+          if (sel) {
+            e.preventDefault();
+            onAddAlertFromDrawing(sel);
+          }
+          return;
+        }
+        // Ctrl + C: Copy selected drawing
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'C') && selectedIdRef.current) {
+          const sel = drawingsRef.current.find((d) => d.id === selectedIdRef.current);
+          if (sel) {
+            copiedDrawingRef.current = JSON.parse(JSON.stringify(sel));
+          }
+          return;
+        }
+        // Ctrl + V: Paste copied drawing
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'v' || e.key === 'V') && copiedDrawingRef.current) {
+          e.preventDefault();
+          const src = JSON.parse(JSON.stringify(copiedDrawingRef.current)) as DrawingObject;
+          const refPrice =
+            src.price ?? src.p1?.price ?? displayCandlesRef.current[displayCandlesRef.current.length - 1]?.close ?? 100;
+          const dp = refPrice * 0.004;
+          const pasted: DrawingObject = {
+            ...src,
+            id: `d-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            locked: false,
+            hidden: false,
+            price: src.price !== undefined ? src.price + dp : undefined,
+            p1: src.p1 ? { ...src.p1, price: src.p1.price + dp } : undefined,
+            p2: src.p2 ? { ...src.p2, price: src.p2.price + dp } : undefined,
+            p3: src.p3 ? { ...src.p3, price: src.p3.price + dp } : undefined,
+            points: src.points ? src.points.map((pt) => ({ ...pt, price: pt.price + dp })) : undefined,
+            stopPrice: src.stopPrice !== undefined ? src.stopPrice + dp : undefined,
+            targetPrice: src.targetPrice !== undefined ? src.targetPrice + dp : undefined,
+          };
+          onAddDrawing(pasted);
+          onSelectDrawingId(pasted.id);
         }
       };
 
@@ -2977,7 +3074,28 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         window.removeEventListener('keyup', onKeyUp);
         window.removeEventListener('blur', onWindowBlur);
       };
-    }, [applyDragEditAt, cancelPendingDrawing, commitPathDrawing, updateDraftPreviewAt]);
+    }, [
+      applyDragEditAt,
+      cancelPendingDrawing,
+      commitPathDrawing,
+      onAddAlertFromDrawing,
+      onAddDrawing,
+      onSelectDrawingId,
+      updateDraftPreviewAt,
+    ]);
+
+    // Close right-click drawing context menu on outside mousedown
+    useEffect(() => {
+      if (!drawingContextMenu) return;
+      const onDown = (e: MouseEvent) => {
+        if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target as Node)) {
+          setDrawingContextMenu(null);
+          setCtxSubmenu('none');
+        }
+      };
+      document.addEventListener('mousedown', onDown);
+      return () => document.removeEventListener('mousedown', onDown);
+    }, [drawingContextMenu]);
 
     // Canvas Drawing Mouse Handlers (exact TradingView Click-Move-Click + Shift 45°/90°/180° Snap!)
     const handleDrawMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -3297,12 +3415,77 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       };
     }, [applyDragEditAt, applyZoomRange, finalizeDrawing, onSelectTool, redrawOverlay, updateCountdownPos]);
 
+    // Apply TradingView "Visibility on intervals" presets based on current timeframe
+    const applyIntervalVisibilityPreset = useCallback(
+      (drawingId: string, mode: 'below' | 'above' | 'only' | 'all') => {
+        if (mode === 'all') {
+          onUpdateDrawing(drawingId, (d) => ({
+            ...d,
+            visibility: JSON.parse(JSON.stringify(DEFAULT_VISIBILITY)),
+          }));
+          return;
+        }
+        const tf = intervalRef.current;
+        const tfMap: Record<
+          Timeframe,
+          { unit: 'minutes' | 'hours' | 'days' | 'weeks'; val: number; rank: number }
+        > = {
+          '1m': { unit: 'minutes', val: 1, rank: 2 },
+          '5m': { unit: 'minutes', val: 5, rank: 2 },
+          '15m': { unit: 'minutes', val: 15, rank: 2 },
+          '30m': { unit: 'minutes', val: 30, rank: 2 },
+          '1h': { unit: 'hours', val: 1, rank: 3 },
+          '4h': { unit: 'hours', val: 4, rank: 3 },
+          '1d': { unit: 'days', val: 1, rank: 4 },
+          '1w': { unit: 'weeks', val: 1, rank: 5 },
+        };
+        const cur = tfMap[tf] || { unit: 'days' as const, val: 1, rank: 4 };
+        const maxMap = { seconds: 59, minutes: 59, hours: 24, days: 366, weeks: 52, months: 12 };
+        const rankMap = { seconds: 1, minutes: 2, hours: 3, days: 4, weeks: 5, months: 6 };
+
+        const makeRange = (unit: keyof typeof maxMap) => {
+          const r = rankMap[unit];
+          const maxV = maxMap[unit];
+          if (mode === 'only') {
+            return unit === cur.unit
+              ? { enabled: true, min: cur.val, max: cur.val }
+              : { enabled: false, min: 1, max: maxV };
+          }
+          if (mode === 'below') {
+            if (r < cur.rank) return { enabled: true, min: 1, max: maxV };
+            if (r === cur.rank) return { enabled: true, min: 1, max: cur.val };
+            return { enabled: false, min: 1, max: maxV };
+          }
+          // above
+          if (r > cur.rank) return { enabled: true, min: 1, max: maxV };
+          if (r === cur.rank) return { enabled: true, min: cur.val, max: maxV };
+          return { enabled: false, min: 1, max: maxV };
+        };
+
+        const nextVis = {
+          ticks: mode === 'below',
+          seconds: makeRange('seconds'),
+          minutes: makeRange('minutes'),
+          hours: makeRange('hours'),
+          days: makeRange('days'),
+          weeks: makeRange('weeks'),
+          months: makeRange('months'),
+          ranges: mode === 'above',
+        };
+        onUpdateDrawing(drawingId, (d) => ({ ...d, visibility: nextVis }));
+      },
+      [onUpdateDrawing]
+    );
+
     // Capture-phase selection & dragging of existing drawings / alert lines when in Cursor mode
     const handleWrapperMouseDownCapture = (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button !== 0 || !isCursorTool(activeToolRef.current)) return;
       // Ignore clicks on UI buttons/overlays inside wrapper
       const target = e.target as HTMLElement;
       if (target.closest('[data-ui-overlay="true"]')) return;
+
+      setDrawingContextMenu(null);
+      setCtxSubmenu('none');
 
       const canvas = drawCanvasRef.current;
       const series = candleSeriesRef.current;
@@ -3341,7 +3524,6 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
       );
       const hit = hitTestDrawings(visible, sx, sy, bridge, selectedIdRef.current);
       if (hit) {
-        onSelectDrawingId(hit.drawingId);
         setToolbarMenu('none');
         const orig = visible.find((d) => d.id === hit.drawingId);
         if (orig && !lockDrawingsRef.current && !orig.locked) {
@@ -3349,16 +3531,39 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           if (startAnchor) {
             e.stopPropagation();
             e.preventDefault();
-            dragEditRef.current = {
-              drawingId: hit.drawingId,
-              handleKey: hit.handleKey,
-              startAnchor,
-              startScreen: { x: sx, y: sy },
-              origDrawing: JSON.parse(JSON.stringify(orig)),
-            };
+            // Ctrl + Drag clones the drawing immediately and drags the clone!
+            if ((e.ctrlKey || e.metaKey) && !hit.handleKey) {
+              const cloned: DrawingObject = {
+                ...JSON.parse(JSON.stringify(orig)),
+                id: `d-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+                locked: false,
+              };
+              onAddDrawing(cloned);
+              onSelectDrawingId(cloned.id);
+              dragEditRef.current = {
+                drawingId: cloned.id,
+                handleKey: undefined,
+                startAnchor,
+                startScreen: { x: sx, y: sy },
+                origDrawing: JSON.parse(JSON.stringify(cloned)),
+              };
+            } else {
+              onSelectDrawingId(hit.drawingId);
+              dragEditRef.current = {
+                drawingId: hit.drawingId,
+                handleKey: hit.handleKey,
+                startAnchor,
+                startScreen: { x: sx, y: sy },
+                origDrawing: JSON.parse(JSON.stringify(orig)),
+              };
+            }
             lastPointerClientRef.current = { clientX: e.clientX, clientY: e.clientY };
             shiftPressedRef.current = e.shiftKey;
+          } else {
+            onSelectDrawingId(hit.drawingId);
           }
+        } else {
+          onSelectDrawingId(hit.drawingId);
         }
       } else {
         setToolbarMenu('none');
@@ -3369,6 +3574,41 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           hoveredDrawingIdRef.current = null;
           redrawOverlay();
         }
+      }
+    };
+
+    // Right-click any drawing -> open TradingView Drawing Context Menu
+    const handleWrapperContextMenuCapture = (e: React.MouseEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-ui-overlay="true"]')) return;
+      if (tempShapeRef.current) {
+        e.preventDefault();
+        cancelPendingDrawing();
+        return;
+      }
+      if (!isCursorTool(activeToolRef.current) || drawingsHiddenRef.current) return;
+
+      const bridge = buildCoordBridge();
+      const canvas = drawCanvasRef.current;
+      if (!bridge || !canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+
+      const visible = drawingsRef.current.filter((d) =>
+        isDrawingVisibleOnTimeframe(d, intervalRef.current)
+      );
+      const hit = hitTestDrawings(visible, sx, sy, bridge, selectedIdRef.current);
+      if (hit) {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelectDrawingId(hit.drawingId);
+        setToolbarMenu('none');
+        setCtxSubmenu('none');
+        setDrawingContextMenu({ drawingId: hit.drawingId, x: sx, y: sy });
+      } else {
+        setDrawingContextMenu(null);
+        setCtxSubmenu('none');
       }
     };
 
@@ -3593,28 +3833,44 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const barColorClass = barDiff >= 0 ? 'text-[var(--accent)]' : 'text-[var(--down)]';
     const lastPriceLive = effectiveCandles[effectiveCandles.length - 1]?.close || tickerData?.last || 0;
 
+    const chartBgStyle = useMemo<React.CSSProperties>(() => {
+      const cv = chartSettings.canvas;
+      const bg1 = cv.backgroundColor || (isDarkMode ? '#131722' : '#ffffff');
+      const bg2 = cv.backgroundColor2 || (isDarkMode ? '#1e222d' : '#f0f3fa');
+      if (cv.backgroundType === 'gradient') {
+        return { background: `linear-gradient(180deg, ${bg1} 0%, ${bg2} 100%)` };
+      }
+      return { backgroundColor: bg1 };
+    }, [chartSettings.canvas, isDarkMode]);
+
     return (
       <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[var(--bg-app)]">
         {/* Main Chart Wrapper */}
         <div
           ref={wrapperRef}
           onMouseDownCapture={handleWrapperMouseDownCapture}
+          onContextMenuCapture={handleWrapperContextMenuCapture}
           onDoubleClickCapture={handleWrapperDoubleClickCapture}
           onMouseMove={handleWrapperMouseMove}
           onMouseLeave={handleWrapperMouseLeave}
-          style={
-            hoverCursor
+          style={{
+            ...chartBgStyle,
+            ...(hoverCursor
               ? { cursor: hoverCursor }
               : activeTool === 'dot'
               ? { cursor: 'cell' }
               : activeTool === 'arrow'
               ? { cursor: 'default' }
-              : undefined
-          }
+              : {}),
+          }}
           className="flex-1 relative min-h-[220px] overflow-hidden"
         >
           <canvas
             ref={cloudCanvasRef}
+            className="absolute inset-0 w-full h-full z-[1] pointer-events-none"
+          />
+          <canvas
+            ref={underDrawCanvasRef}
             className="absolute inset-0 w-full h-full z-[1] pointer-events-none"
           />
           <div ref={chartContainerRef} className="absolute inset-0 w-full h-full z-[2]" />
@@ -4723,6 +4979,501 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                 </div>
               </div>
             )}
+
+          {/* TradingView Right-Click Drawing Context Menu */}
+          {drawingContextMenu &&
+            (() => {
+              const targetDrawing = drawings.find((d) => d.id === drawingContextMenu.drawingId);
+              if (!targetDrawing) return null;
+              const toolLabel = (
+                ALL_TOOLS_MAP[targetDrawing.type]?.label || targetDrawing.type
+              ).toLowerCase();
+              const wrapW = wrapperRef.current?.clientWidth || 900;
+              const wrapH = wrapperRef.current?.clientHeight || 560;
+              const menuW = 280;
+              const menuH = 420;
+              const leftPos = Math.max(8, Math.min(drawingContextMenu.x, wrapW - menuW - 8));
+              const topPos = Math.max(8, Math.min(drawingContextMenu.y, wrapH - menuH - 8));
+              const openSubLeft = leftPos + menuW + 210 > wrapW;
+
+              const closeCtx = () => {
+                setDrawingContextMenu(null);
+                setCtxSubmenu('none');
+              };
+
+              return (
+                <div
+                  ref={ctxMenuRef}
+                  data-ui-overlay="true"
+                  onContextMenu={(e) => e.preventDefault()}
+                  style={{ left: `${leftPos}px`, top: `${topPos}px`, width: `${menuW}px` }}
+                  className="absolute z-50 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 text-[13px] text-[var(--text-main)] select-none"
+                >
+                  {/* 1. Add alert on <drawing>... */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      onAddAlertFromDrawing(targetDrawing);
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <AlarmClockPlus className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                      <span className="truncate">Add alert on {toolLabel}...</span>
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)] shrink-0">Alt + A</span>
+                  </button>
+
+                  <div className="h-px bg-[var(--border)] my-1" />
+
+                  {/* 2. Template > */}
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setCtxSubmenu('template')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCtxSubmenu((prev) => (prev === 'template' ? 'none' : 'template'))
+                      }
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between gap-2 cursor-pointer ${
+                        ctxSubmenu === 'template' ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <span className="w-4 h-4 shrink-0" />
+                        <span>Template</span>
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    </button>
+                    {ctxSubmenu === 'template' && (
+                      <div
+                        className={`absolute top-0 ${
+                          openSubLeft ? 'right-full mr-0.5' : 'left-full ml-0.5'
+                        } w-52 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-50 text-[12.5px]`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            closeCtx();
+                            onOpenDrawingSettings(targetDrawing.id, 'style');
+                          }}
+                          className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer"
+                        >
+                          Save As...
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onUpdateDrawing(targetDrawing.id, (d) => ({
+                              ...d,
+                              color: '#2962ff',
+                              lineWidth: 2,
+                              lineStyle: 'solid',
+                              extend: 'none',
+                              leftEnd: 'normal',
+                              rightEnd: 'normal',
+                              showMiddlePoint: false,
+                              showPriceLabels: d.type === 'hline' || d.type === 'hray',
+                              statsMode: 'hidden',
+                              alwaysShowStats: false,
+                              visibility: JSON.parse(JSON.stringify(DEFAULT_VISIBILITY)),
+                            }));
+                            closeCtx();
+                          }}
+                          className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer"
+                        >
+                          Apply Default
+                        </button>
+                        {templates.length > 0 && (
+                          <div className="border-t border-[var(--border)] mt-1 pt-1 max-h-44 overflow-y-auto">
+                            {templates.map((tpl) => (
+                              <button
+                                key={tpl.id}
+                                type="button"
+                                onClick={() => {
+                                  onUpdateDrawing(targetDrawing.id, (d) => ({
+                                    ...d,
+                                    color: tpl.color,
+                                    lineWidth: tpl.lineWidth,
+                                    lineStyle: tpl.lineStyle,
+                                    extend: tpl.extend,
+                                    leftEnd: tpl.leftEnd,
+                                    rightEnd: tpl.rightEnd,
+                                    showMiddlePoint: tpl.showMiddlePoint,
+                                    showPriceLabels: tpl.showPriceLabels,
+                                    statsMode: tpl.statsMode,
+                                    statsPosition: tpl.statsPosition,
+                                    alwaysShowStats: tpl.alwaysShowStats,
+                                    textColor: tpl.textColor,
+                                    fontSize: tpl.fontSize,
+                                    fontBold: tpl.fontBold,
+                                    fontItalic: tpl.fontItalic,
+                                    textAlignV: tpl.textAlignV,
+                                    textAlignH: tpl.textAlignH,
+                                  }));
+                                  closeCtx();
+                                }}
+                                className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2 cursor-pointer"
+                              >
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: tpl.color }}
+                                />
+                                <span className="truncate">{tpl.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Visual order > */}
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setCtxSubmenu('order')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCtxSubmenu((prev) => (prev === 'order' ? 'none' : 'order'))
+                      }
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between gap-2 cursor-pointer ${
+                        ctxSubmenu === 'order' ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <Layers className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                        <span>Visual order</span>
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    </button>
+                    {ctxSubmenu === 'order' && (
+                      <div
+                        className={`absolute top-0 ${
+                          openSubLeft ? 'right-full mr-0.5' : 'left-full ml-0.5'
+                        } w-48 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-50 text-[12.5px]`}
+                      >
+                        {(
+                          [
+                            { id: 'front', label: 'Bring to front' },
+                            { id: 'back', label: 'Send to back' },
+                            { id: 'forward', label: 'Bring forward' },
+                            { id: 'backward', label: 'Send backward' },
+                          ] as const
+                        ).map((ord) => (
+                          <button
+                            key={ord.id}
+                            type="button"
+                            onClick={() => {
+                              onReorderDrawing(targetDrawing.id, ord.id);
+                              closeCtx();
+                            }}
+                            className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer"
+                          >
+                            {ord.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. Visibility on intervals > */}
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setCtxSubmenu('visibility')}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCtxSubmenu((prev) => (prev === 'visibility' ? 'none' : 'visibility'))
+                      }
+                      className={`w-full px-3 py-2 text-left flex items-center justify-between gap-2 cursor-pointer ${
+                        ctxSubmenu === 'visibility'
+                          ? 'bg-[var(--bg-hover)]'
+                          : 'hover:bg-[var(--bg-hover)]'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2.5">
+                        <span className="w-4 h-4 shrink-0" />
+                        <span>Visibility on intervals</span>
+                      </span>
+                      <ChevronRight className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                    </button>
+                    {ctxSubmenu === 'visibility' && (
+                      <div
+                        className={`absolute top-0 ${
+                          openSubLeft ? 'right-full mr-0.5' : 'left-full ml-0.5'
+                        } w-56 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-50 text-[12.5px]`}
+                      >
+                        {(
+                          [
+                            { id: 'below', label: 'Current interval and below' },
+                            { id: 'above', label: 'Current interval and above' },
+                            { id: 'only', label: 'Current interval only' },
+                            { id: 'all', label: 'All intervals' },
+                          ] as const
+                        ).map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              applyIntervalVisibilityPreset(targetDrawing.id, opt.id);
+                              closeCtx();
+                            }}
+                            className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-main)] cursor-pointer"
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 5. Object tree */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      setObjectTreeOpen(true);
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <span className="w-4 h-4 shrink-0" />
+                    <span>Object tree</span>
+                  </button>
+
+                  <div className="h-px bg-[var(--border)] my-1" />
+
+                  {/* 6. Clone */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      onCloneDrawing(targetDrawing.id);
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Copy className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                      <span>Clone</span>
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)] shrink-0">Ctrl + Drag</span>
+                  </button>
+
+                  {/* 7. Copy */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      copiedDrawingRef.current = JSON.parse(JSON.stringify(targetDrawing));
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <span className="w-4 h-4 shrink-0" />
+                      <span>Copy</span>
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)] shrink-0">Ctrl + C</span>
+                  </button>
+
+                  <div className="h-px bg-[var(--border)] my-1" />
+
+                  {/* 8. Lock / Unlock */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      onUpdateDrawing(targetDrawing.id, (d) => ({ ...d, locked: !d.locked }));
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2.5 cursor-pointer"
+                  >
+                    {targetDrawing.locked ? (
+                      <Lock className="w-4 h-4 shrink-0 text-[var(--accent)]" strokeWidth={1.6} />
+                    ) : (
+                      <Unlock className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                    )}
+                    <span>{targetDrawing.locked ? 'Unlock' : 'Lock'}</span>
+                  </button>
+
+                  {/* 9. Hide */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      onUpdateDrawing(targetDrawing.id, (d) => ({ ...d, hidden: true }));
+                      onSelectDrawingId(null);
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <EyeOff className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                    <span>Hide</span>
+                  </button>
+
+                  {/* 10. Remove */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      onDeleteDrawing(targetDrawing.id);
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2.5">
+                      <Trash2 className="w-4 h-4 shrink-0 text-[var(--text-main)]" strokeWidth={1.6} />
+                      <span>Remove</span>
+                    </span>
+                    <span className="text-[11px] text-[var(--text-muted)] shrink-0">Del</span>
+                  </button>
+
+                  <div className="h-px bg-[var(--border)] my-1" />
+
+                  {/* 11. Settings... */}
+                  <button
+                    type="button"
+                    onMouseEnter={() => setCtxSubmenu('none')}
+                    onClick={() => {
+                      onOpenDrawingSettings(targetDrawing.id, 'style');
+                      closeCtx();
+                    }}
+                    className="w-full px-3 py-2 text-left hover:bg-[var(--bg-hover)] flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <HexSettingsIcon className="w-4 h-4 shrink-0 text-[var(--text-main)]" />
+                    <span>Settings...</span>
+                  </button>
+                </div>
+              );
+            })()}
+
+          {/* Floating Object Tree Panel (opened from right-click context menu) */}
+          {objectTreeOpen && (
+            <div
+              data-ui-overlay="true"
+              className="absolute top-12 right-20 z-40 w-[268px] max-h-[360px] flex flex-col bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl text-[12px] text-[var(--text-main)] overflow-hidden select-none"
+            >
+              <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--border)]">
+                <span className="font-semibold flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                  Object Tree · {symbol}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setObjectTreeOpen(false)}
+                  className="p-0.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto divide-y divide-[var(--border)]/50">
+                {drawings.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-[var(--text-muted)]">
+                    No drawings on {symbol}
+                  </div>
+                ) : (
+                  [...drawings].reverse().map((d) => {
+                    const label =
+                      d.title || ALL_TOOLS_MAP[d.type]?.label || d.type;
+                    const pricePreview =
+                      d.price !== undefined
+                        ? fmtPrice(d.price, getPrecision(d.price))
+                        : d.p1
+                        ? fmtPrice(d.p1.price, getPrecision(d.p1.price))
+                        : '';
+                    const isSel = d.id === selectedDrawingId;
+                    return (
+                      <div
+                        key={d.id}
+                        onClick={() => onSelectDrawingId(d.id)}
+                        className={`group flex items-center justify-between px-2.5 py-1.5 cursor-pointer ${
+                          isSel
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'hover:bg-[var(--bg-hover)]'
+                        } ${d.hidden ? 'opacity-50' : ''}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10"
+                            style={{ backgroundColor: d.color || '#2962ff' }}
+                          />
+                          <div className="min-w-0">
+                            <div className="truncate font-medium leading-tight">{label}</div>
+                            {pricePreview && (
+                              <div className="text-[10.5px] font-mono-num text-[var(--text-muted)] leading-tight">
+                                {pricePreview}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            title={d.locked ? 'Unlock' : 'Lock'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateDrawing(d.id, (prev) => ({ ...prev, locked: !prev.locked }));
+                            }}
+                            className="p-1 rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                          >
+                            {d.locked ? (
+                              <Lock className="w-3 h-3 text-[var(--accent)]" />
+                            ) : (
+                              <Unlock className="w-3 h-3" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            title={d.hidden ? 'Show' : 'Hide'}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onUpdateDrawing(d.id, (prev) => ({ ...prev, hidden: !prev.hidden }));
+                            }}
+                            className="p-1 rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                          >
+                            {d.hidden ? (
+                              <EyeOff className="w-3 h-3" />
+                            ) : (
+                              <Eye className="w-3 h-3" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            title="Settings"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onOpenDrawingSettings(d.id, 'style');
+                            }}
+                            className="p-1 rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+                          >
+                            <Settings className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            title="Remove"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteDrawing(d.id);
+                            }}
+                            className="p-1 rounded hover:bg-[var(--bg-elevated)] text-[var(--text-muted)] hover:text-[#f23645] cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Inline Text / Callout Input Popup */}
           {textPrompt && (

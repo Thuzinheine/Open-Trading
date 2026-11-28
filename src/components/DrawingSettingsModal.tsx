@@ -350,53 +350,110 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
           {/* ===== TAB 1: STYLE ===== */}
           {tab === 'style' && (
             <>
-              {/* Line Row: Color + Width + Style + Left/Right End Caps */}
+              {/* Line Row: TradingView Swatch + Line Preview Pill (Color + Thickness + Line Style Popover) + Left/Right End Caps */}
               <div className="flex items-center justify-between gap-3">
-                <span className="text-[var(--text-main)] font-medium">Line</span>
+                <span className="text-[var(--text-main)] font-normal">Line</span>
                 <div className="flex items-center gap-2">
-                  {/* Color + Width + Style Pill */}
-                  <div className="relative flex items-center gap-1.5 h-8 px-2 rounded-md border border-[var(--border)] bg-[var(--bg-app)]">
+                  {/* TradingView Compact Color + Line Style Preview Button */}
+                  <div className="relative">
                     <button
                       type="button"
                       onClick={() => setLineColorPickerOpen((v) => !v)}
-                      className="w-5 h-5 rounded border border-black/15 cursor-pointer shrink-0"
-                      style={{ backgroundColor: drawing.color || '#2962ff' }}
-                      title="Line Color"
-                    />
-                    <select
-                      value={Math.round(drawing.lineWidth || 2)}
-                      onChange={(e) => patch({ lineWidth: parseInt(e.target.value, 10) })}
-                      className="bg-transparent text-xs font-mono-num text-[var(--text-main)] outline-none cursor-pointer"
+                      title="Line Color, Thickness & Style"
+                      className="h-[34px] px-2 rounded-md border border-[var(--border)] bg-[var(--bg-app)] hover:border-[var(--text-muted)] inline-flex items-center gap-2 cursor-pointer"
                     >
-                      {[1, 2, 3, 4].map((w) => (
-                        <option key={w} value={w} className="bg-[var(--bg-surface)]">
-                          {w}px
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={drawing.lineStyle || 'solid'}
-                      onChange={(e) => patch({ lineStyle: e.target.value as DrawingLineStyle })}
-                      className="bg-transparent text-xs text-[var(--text-main)] outline-none cursor-pointer"
-                    >
-                      <option value="solid" className="bg-[var(--bg-surface)]">
-                        Solid
-                      </option>
-                      <option value="dashed" className="bg-[var(--bg-surface)]">
-                        Dashed
-                      </option>
-                      <option value="dotted" className="bg-[var(--bg-surface)]">
-                        Dotted
-                      </option>
-                    </select>
+                      <span
+                        className="w-[22px] h-[22px] rounded-[4px] border border-black/15 shrink-0"
+                        style={{ backgroundColor: drawing.color || '#2962ff' }}
+                      />
+                      <svg width="34" height="12" viewBox="0 0 34 12" fill="none">
+                        <line
+                          x1="1"
+                          y1="6"
+                          x2="33"
+                          y2="6"
+                          stroke={drawing.color || '#2962ff'}
+                          strokeWidth={Math.max(1.2, Math.min(3.5, drawing.lineWidth || 2))}
+                          strokeDasharray={
+                            drawing.lineStyle === 'dashed'
+                              ? '6 3'
+                              : drawing.lineStyle === 'dotted'
+                              ? '2 2.5'
+                              : undefined
+                          }
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </button>
 
                     {lineColorPickerOpen && (
-                      <ColorPalettePopover
-                        align="right"
-                        value={drawing.color || '#2962ff'}
-                        onChange={(c) => patch({ color: c })}
-                        onClose={() => setLineColorPickerOpen(false)}
-                      />
+                      <div
+                        className="absolute right-0 top-10 z-50 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl p-2.5 w-[244px] space-y-2.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="relative">
+                          <ColorPalettePopover
+                            inline
+                            value={drawing.color || '#2962ff'}
+                            onChange={(c) => patch({ color: c })}
+                            onClose={() => setLineColorPickerOpen(false)}
+                          />
+                        </div>
+                        <div className="border-t border-[var(--border)] pt-2 space-y-1.5">
+                          <div className="text-[11px] font-medium text-[var(--text-muted)]">Thickness</div>
+                          <div className="grid grid-cols-4 gap-1">
+                            {[1, 2, 3, 4].map((w) => (
+                              <button
+                                key={w}
+                                type="button"
+                                onClick={() => patch({ lineWidth: w })}
+                                className={`h-7 rounded border flex items-center justify-center cursor-pointer ${
+                                  Math.round(drawing.lineWidth || 2) === w
+                                    ? 'border-[var(--accent)] bg-[var(--bg-active)]'
+                                    : 'border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                                }`}
+                              >
+                                <span
+                                  className="w-6 rounded-full bg-[var(--text-main)]"
+                                  style={{ height: `${w}px` }}
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="border-t border-[var(--border)] pt-2 space-y-1.5">
+                          <div className="text-[11px] font-medium text-[var(--text-muted)]">Line style</div>
+                          <div className="grid grid-cols-3 gap-1">
+                            {(['solid', 'dashed', 'dotted'] as DrawingLineStyle[]).map((st) => (
+                              <button
+                                key={st}
+                                type="button"
+                                onClick={() => patch({ lineStyle: st })}
+                                className={`h-7 rounded border flex items-center justify-center cursor-pointer ${
+                                  (drawing.lineStyle || 'solid') === st
+                                    ? 'border-[var(--accent)] bg-[var(--bg-active)]'
+                                    : 'border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                                }`}
+                              >
+                                <svg width="32" height="6" viewBox="0 0 32 6" fill="none">
+                                  <line
+                                    x1="1"
+                                    y1="3"
+                                    x2="31"
+                                    y2="3"
+                                    stroke="currentColor"
+                                    strokeWidth="1.8"
+                                    strokeDasharray={
+                                      st === 'dashed' ? '5 3' : st === 'dotted' ? '2 2.5' : undefined
+                                    }
+                                    strokeLinecap="round"
+                                  />
+                                </svg>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
 
@@ -535,7 +592,11 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                   onChange={(e) => patch({ showPriceLabels: e.target.checked })}
                   className="w-4 h-4 accent-[#131722] dark:accent-[var(--accent)] rounded"
                 />
-                <span className="text-[var(--text-main)]">Price labels</span>
+                <span className="text-[var(--text-main)]">
+                  {drawing.type === 'hline' || drawing.type === 'hray'
+                    ? 'Price label'
+                    : 'Price labels'}
+                </span>
               </label>
 
               {/* INFO STATS SECTION */}
@@ -638,7 +699,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
 
                 {/* Font Size */}
                 <select
-                  value={drawing.fontSize || 14}
+                  value={drawing.fontSize || (drawing.type === 'hline' ? 12 : 14)}
                   onChange={(e) => patch({ fontSize: parseInt(e.target.value, 10) })}
                   className="h-8 w-20 px-2 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs font-mono-num outline-none cursor-pointer"
                 >
@@ -688,7 +749,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 <span className="text-[var(--text-main)]">Text alignment</span>
                 <div className="flex items-center gap-2">
                   <select
-                    value={drawing.textAlignV || 'top'}
+                    value={drawing.textAlignV || (drawing.type === 'hline' ? 'middle' : 'top')}
                     onChange={(e) => patch({ textAlignV: e.target.value as TextAlignV })}
                     className="h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none cursor-pointer"
                   >

@@ -238,6 +238,7 @@ export interface DrawingObject {
   lineStyle?: DrawingLineStyle;
   locked?: boolean;
   hidden?: boolean;
+  zOrder?: 'front' | 'back';
   // Style options
   extend?: LineExtendMode;
   leftEnd?: LineEndCap;
