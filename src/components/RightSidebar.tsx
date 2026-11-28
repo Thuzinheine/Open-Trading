@@ -2165,34 +2165,34 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
         </aside>
       )}
 
-      {/* Far-Right TradingView Icon Rail (Compact 40px Rail) */}
-      <aside className="w-[40px] bg-[var(--bg-surface)] rounded-tl-[4px] flex flex-col items-center py-1.5 justify-between shrink-0">
+      {/* Far-Right TradingView Icon Rail (Balanced 44px Rail) */}
+      <aside className="w-[44px] bg-[var(--bg-surface)] rounded-tl-[4px] flex flex-col items-center py-1.5 justify-between shrink-0">
         {/* Top Rail Icons */}
         <div className="flex flex-col items-center gap-1">
           <button
             type="button"
             onClick={() => handleRailClick('watchlist')}
             title="Watchlist, details and news"
-            className={`w-[30px] h-[30px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[33px] h-[33px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'watchlist'
                 ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <WatchlistBookmarkIcon className="w-[18px] h-[18px]" />
+            <WatchlistBookmarkIcon className="w-[20px] h-[20px]" />
           </button>
 
           <button
             type="button"
             onClick={() => handleRailClick('alerts')}
             title="Alerts"
-            className={`relative w-[30px] h-[30px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`relative w-[33px] h-[33px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'alerts'
                 ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <AlarmClock className="w-[17px] h-[17px]" strokeWidth={1.45} />
+            <AlarmClock className="w-[19px] h-[19px]" strokeWidth={1.5} />
             {activeAlertsCount > 0 && (
               <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--down)]" />
             )}
@@ -2202,13 +2202,13 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             type="button"
             onClick={() => handleRailClick('orderbook')}
             title="Order Book & Live Market Depth"
-            className={`w-[30px] h-[30px] rounded-[5px] flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-[33px] h-[33px] rounded-[6px] flex items-center justify-center transition-colors cursor-pointer ${
               visible && activeTab === 'orderbook'
                 ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)]'
                 : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            <Layers className="w-[17px] h-[17px]" strokeWidth={1.45} />
+            <Layers className="w-[19px] h-[19px]" strokeWidth={1.5} />
           </button>
         </div>
 
@@ -2218,18 +2218,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
             type="button"
             onClick={() => onOpenIndicators?.()}
             title="Indicators & Strategies"
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Sparkles className="w-[16px] h-[16px]" strokeWidth={1.45} />
+            <Sparkles className="w-[18px] h-[18px]" strokeWidth={1.5} />
           </button>
 
           <button
             type="button"
             onClick={onOpenSearch}
             title="Symbol Screener / Search (Ctrl+K)"
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Target className="w-[16px] h-[16px]" strokeWidth={1.45} />
+            <Target className="w-[18px] h-[18px]" strokeWidth={1.5} />
           </button>
 
           <button
@@ -2242,18 +2242,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               }, 80);
             }}
             title="Technicals & Seasonals"
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Mountain className="w-[16px] h-[16px]" strokeWidth={1.45} />
+            <Mountain className="w-[18px] h-[18px]" strokeWidth={1.5} />
           </button>
 
           <button
             type="button"
             onClick={() => onOpenSettings('events')}
             title="Calendar & Events Settings"
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Calendar className="w-[16px] h-[16px]" strokeWidth={1.45} />
+            <Calendar className="w-[18px] h-[18px]" strokeWidth={1.5} />
           </button>
 
           <button
@@ -2264,18 +2264,18 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               if (!visible) onToggleVisible();
             }}
             title="Live Market Trades Feed"
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Rss className="w-[16px] h-[16px]" strokeWidth={1.45} />
+            <Rss className="w-[18px] h-[18px]" strokeWidth={1.5} />
           </button>
 
           <button
             type="button"
             onClick={() => handleRailClick('alerts')}
             title="Alert Notifications"
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <Bell className="w-[16px] h-[16px]" strokeWidth={1.45} />
+            <Bell className="w-[18px] h-[18px]" strokeWidth={1.5} />
           </button>
 
           <button
@@ -2289,27 +2289,27 @@ export const RightSidebar: React.FC<RightSidebarProps> = ({
               }, 60);
             }}
             title={`Quick Notes for ${currentSymbol}`}
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <MessageSquare className="w-[16px] h-[16px]" strokeWidth={1.45} />
+            <MessageSquare className="w-[18px] h-[18px]" strokeWidth={1.5} />
           </button>
 
           <button
             type="button"
             onClick={onToggleTrade}
             title="Paper Trading Panel"
-            className="w-[30px] h-[30px] my-0.5 rounded-full flex items-center justify-center text-[var(--text-main)] hover:opacity-85 transition-opacity cursor-pointer"
+            className="w-[33px] h-[33px] my-0.5 rounded-full flex items-center justify-center text-[var(--text-main)] hover:opacity-85 transition-opacity cursor-pointer"
           >
-            <AppsCircleIcon className="w-[23px] h-[23px]" />
+            <AppsCircleIcon className="w-[25px] h-[25px]" />
           </button>
 
           <button
             type="button"
             onClick={() => setShortcutsOpen(true)}
             title="Keyboard Shortcuts"
-            className="w-[30px] h-[30px] rounded-[5px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
+            className="w-[33px] h-[33px] rounded-[6px] flex items-center justify-center text-[var(--text-main)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer"
           >
-            <HelpCircle className="w-[17px] h-[17px]" strokeWidth={1.45} />
+            <HelpCircle className="w-[19px] h-[19px]" strokeWidth={1.5} />
           </button>
         </div>
       </aside>

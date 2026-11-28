@@ -4299,11 +4299,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           {/* Chart Legend (Compact TradingView Status Line) */}
           <div
             data-ui-overlay="true"
-            className={`absolute top-1.5 ${
-              chartSettings.scales.scalesPlacement === 'left' ? 'left-16' : 'left-2.5'
+            className={`absolute top-2 ${
+              chartSettings.scales.scalesPlacement === 'left' ? 'left-16' : 'left-3'
             } z-10 pointer-events-none flex flex-col gap-0.5 max-w-[calc(100%-86px)]`}
           >
-            <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-[12.5px]">
+            <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-[13.5px]">
               {(chartSettings.statusLine.logo || chartSettings.statusLine.title) && (
                 <span className="font-medium text-[var(--text-main)] inline-flex items-center gap-1.5">
                   {chartSettings.statusLine.logo && (
@@ -4311,7 +4311,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                       symbol={symbol}
                       color={symbolMeta.color}
                       letter={symbolMeta.letter}
-                      size={16}
+                      size={18}
                     />
                   )}
                   {chartSettings.statusLine.title && (
@@ -4334,13 +4334,13 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                   title="Flag symbol"
                   className="pointer-events-auto inline-flex items-center justify-center p-0.5 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] cursor-pointer"
                 >
-                  <FlagRibbon color={symbolMeta.flagColor || '#f23645'} size={11} />
+                  <FlagRibbon color={symbolMeta.flagColor || '#f23645'} size={12} />
                 </button>
               )}
 
               {chartSettings.statusLine.openMarketStatus && (
                 <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-[1px] rounded-full text-[10.5px] font-medium ${
+                  className={`inline-flex items-center gap-1 px-2 py-[1.5px] rounded-full text-[11px] font-medium ${
                     isReplayMode
                       ? 'bg-[var(--amber)]/15 text-[var(--amber)]'
                       : wsStatus === 'live'
@@ -4377,7 +4377,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                 (chartSettings.statusLine.ohlcValues ||
                   chartSettings.statusLine.barChangeValues ||
                   chartSettings.statusLine.volume) && (
-                  <div className="inline-flex items-center gap-1.5 font-mono-num text-[11.5px] text-[var(--text-main)]">
+                  <div className="inline-flex items-center gap-1.5 font-mono-num text-[12.5px] text-[var(--text-main)]">
                     {chartSettings.statusLine.ohlcValues && (
                       <>
                         <span>
@@ -6437,19 +6437,19 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               width: `${Math.max(54, rightScaleWidth)}px`,
               ...(chartSettings.scales.scalesPlacement === 'left' ? { left: 0 } : { right: 0 }),
             }}
-            className="absolute bottom-0 h-[26px] z-20 flex items-center justify-center bg-[var(--bg-app)]"
+            className="absolute bottom-0 h-[27px] z-20 flex items-center justify-center bg-[var(--bg-app)]"
           >
             <button
               type="button"
               onClick={() => setScaleMenuOpen((v) => !v)}
               title="Price Scale Settings"
-              className={`w-6 h-6 rounded inline-flex items-center justify-center transition-colors cursor-pointer ${
+              className={`w-[26px] h-[26px] rounded inline-flex items-center justify-center transition-colors cursor-pointer ${
                 scaleMenuOpen
                   ? 'bg-[var(--bg-hover)] text-[var(--accent)]'
                   : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
               }`}
             >
-              <HexSettingsIcon className="w-[15px] h-[15px]" />
+              <HexSettingsIcon className="w-[16.5px] h-[16.5px]" />
             </button>
 
             {scaleMenuOpen && (
@@ -6635,8 +6635,8 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           </div>
         )}
 
-        {/* Bottom Date Range & UTC Clock Strip (Compact 30px TradingView Strip) */}
-        <div className="h-[30px] border-t border-[var(--border)] bg-[var(--bg-surface)] flex items-center justify-between px-2 text-[11.5px] shrink-0 select-none relative">
+        {/* Bottom Date Range & UTC Clock Strip (Crisp 33px TradingView Strip) */}
+        <div className="h-[33px] border-t border-[var(--border)] bg-[var(--bg-surface)] flex items-center justify-between px-2.5 text-[12.5px] shrink-0 select-none relative">
           <div className="flex items-center gap-0.5">
             {(
               [
@@ -6680,7 +6680,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                   const targetBars = Math.max(12, Math.round((spanDays * 86400) / barSec));
                   applyZoomRange(targetBars);
                 }}
-                className={`px-1.5 py-0.5 rounded-[4px] text-[11.5px] transition-colors cursor-pointer ${
+                className={`px-2 py-0.5 rounded-[4px] text-[12.5px] transition-colors cursor-pointer ${
                   activeDateRange === rng.id
                     ? 'bg-[var(--bg-hover)] text-[var(--accent)] font-semibold'
                     : 'text-[var(--text-main)] font-normal hover:bg-[var(--bg-hover)]'
@@ -6690,7 +6690,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
               </button>
             ))}
 
-            <div className="w-px h-3.5 bg-[var(--border)] mx-1" />
+            <div className="w-px h-4 bg-[var(--border)] mx-1" />
 
             {/* Go to Date Calendar Button */}
             <div className="relative">
@@ -6698,13 +6698,13 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                 type="button"
                 onClick={() => setGoToDateOpen((v) => !v)}
                 title="Go to date..."
-                className={`w-6 h-6 rounded-[4px] inline-flex items-center justify-center transition-colors cursor-pointer ${
+                className={`w-7 h-7 rounded-[5px] inline-flex items-center justify-center transition-colors cursor-pointer ${
                   goToDateOpen
                     ? 'bg-[var(--bg-hover)] text-[var(--accent)]'
                     : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
-                <Calendar className="w-[14px] h-[14px]" strokeWidth={1.5} />
+                <Calendar className="w-[16px] h-[16px]" strokeWidth={1.55} />
               </button>
 
               {goToDateOpen && (
@@ -6749,10 +6749,10 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="font-mono-num text-[11.5px] text-[var(--text-main)]">{clockStr}</span>
-            <div className="hidden sm:block w-px h-3.5 bg-[var(--border)]" />
-            <div className="hidden sm:flex items-center gap-1.5">
+          <div className="flex items-center gap-2.5">
+            <span className="font-mono-num text-[12.5px] text-[var(--text-main)]">{clockStr}</span>
+            <div className="hidden sm:block w-px h-4 bg-[var(--border)]" />
+            <div className="hidden sm:flex items-center gap-2">
               {(
                 [
                   { id: 'pct', label: '%' },
@@ -6775,7 +6775,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                       applyScaleMode(scaleMode === m.id ? 'regular' : m.id);
                     }
                   }}
-                  className={`text-[11.5px] font-medium cursor-pointer ${
+                  className={`text-[12.5px] font-medium cursor-pointer ${
                     (m.id === 'auto' ? chartSettings.scales.autoScale : scaleMode === m.id)
                       ? 'text-[var(--accent)] font-semibold'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'

@@ -81,11 +81,11 @@ const ALL_TFS: { value: Timeframe; label: string; desc: string }[] = [
 ];
 
 const CHART_TYPES: { value: ChartType; label: string; icon: React.ReactNode }[] = [
-  { value: 'candles', label: 'Candles', icon: <HollowCandlesIcon className="w-[19px] h-[19px]" /> },
-  { value: 'hollow', label: 'Hollow Candles', icon: <BarChart2 className="w-[17px] h-[17px]" strokeWidth={1.5} /> },
-  { value: 'heikin', label: 'Heikin Ashi', icon: <HollowCandlesIcon className="w-[19px] h-[19px]" /> },
-  { value: 'area', label: 'Area', icon: <AreaChart className="w-[17px] h-[17px]" strokeWidth={1.5} /> },
-  { value: 'line', label: 'Line', icon: <LineChart className="w-[17px] h-[17px]" strokeWidth={1.5} /> },
+  { value: 'candles', label: 'Candles', icon: <HollowCandlesIcon className="w-[21px] h-[21px]" /> },
+  { value: 'hollow', label: 'Hollow Candles', icon: <BarChart2 className="w-[19px] h-[19px]" strokeWidth={1.55} /> },
+  { value: 'heikin', label: 'Heikin Ashi', icon: <HollowCandlesIcon className="w-[21px] h-[21px]" /> },
+  { value: 'area', label: 'Area', icon: <AreaChart className="w-[19px] h-[19px]" strokeWidth={1.55} /> },
+  { value: 'line', label: 'Line', icon: <LineChart className="w-[19px] h-[19px]" strokeWidth={1.55} /> },
 ];
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -171,17 +171,17 @@ export const TopBar: React.FC<TopBarProps> = ({
   const isCustomQuickTf = !QUICK_TFS.some((q) => q.value === interval);
 
   return (
-    <header className="h-[38px] bg-[var(--bg-surface)] flex items-center px-1.5 gap-0.5 shrink-0 select-none z-30">
+    <header className="h-[41px] bg-[var(--bg-surface)] flex items-center px-2 gap-0.5 shrink-0 select-none z-30">
       {/* TradingView Circular Profile Avatar */}
       <button
         type="button"
         onClick={onOpenSettings}
         title="Workspace & Chart Settings"
-        className="relative w-[26px] h-[26px] rounded-full bg-[#687e99] hover:opacity-90 text-white text-[12px] font-semibold inline-flex items-center justify-center shrink-0 mr-1 cursor-pointer transition-opacity"
+        className="relative w-[28px] h-[28px] rounded-full bg-[#687e99] hover:opacity-90 text-white text-[12.5px] font-semibold inline-flex items-center justify-center shrink-0 mr-1 cursor-pointer transition-opacity"
       >
         <span>T</span>
         {openPositionsCount > 0 && (
-          <span className="absolute -top-0.5 -right-1 min-w-[14px] h-[14px] px-0.5 rounded-full bg-[#f23645] text-white text-[9px] font-bold inline-flex items-center justify-center leading-none">
+          <span className="absolute -top-0.5 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-[#f23645] text-white text-[9.5px] font-bold inline-flex items-center justify-center leading-none">
             {openPositionsCount}
           </span>
         )}
@@ -191,12 +191,12 @@ export const TopBar: React.FC<TopBarProps> = ({
       <button
         type="button"
         onClick={onOpenSearch}
-        className="h-[28px] pl-2.5 pr-0.5 rounded-full bg-[#f0f3fa] dark:bg-[var(--bg-elevated)] hover:bg-[#e6e9f2] dark:hover:bg-[var(--bg-hover)] flex items-center gap-1.5 font-semibold text-[12.5px] text-[var(--text-main)] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+        className="h-[30px] pl-3 pr-1 rounded-full bg-[#f0f3fa] dark:bg-[var(--bg-elevated)] hover:bg-[#e6e9f2] dark:hover:bg-[var(--bg-hover)] flex items-center gap-1.5 font-semibold text-[13px] text-[var(--text-main)] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         title="Symbol Search (Ctrl+K)"
       >
         <span className="tracking-tight">{currentSymbol}</span>
-        <span className="w-[22px] h-[22px] rounded-full bg-[var(--bg-surface)] border border-[var(--border)]/60 inline-flex items-center justify-center text-[var(--text-main)]">
-          <TwoCandlesPillIcon className="w-3 h-3" />
+        <span className="w-[23px] h-[23px] rounded-full bg-[var(--bg-surface)] border border-[var(--border)]/60 inline-flex items-center justify-center text-[var(--text-main)]">
+          <TwoCandlesPillIcon className="w-[13px] h-[13px]" />
         </span>
       </button>
 
@@ -204,13 +204,13 @@ export const TopBar: React.FC<TopBarProps> = ({
       <button
         type="button"
         onClick={onOpenSearch}
-        className="h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors shrink-0 cursor-pointer"
+        className="h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors shrink-0 cursor-pointer"
         title="Compare or Add Symbol"
       >
-        <PlusCircle className="w-[16px] h-[16px]" strokeWidth={1.4} />
+        <PlusCircle className="w-[18px] h-[18px]" strokeWidth={1.45} />
       </button>
 
-      <div className="w-px h-[18px] bg-[var(--border)] mx-0.5 shrink-0" />
+      <div className="w-px h-[20px] bg-[var(--border)] mx-0.5 shrink-0" />
 
       {/* Timeframes (15m 1h 4h D W) */}
       <div className="hidden md:flex items-center gap-0.5 shrink-0">
@@ -222,7 +222,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               type="button"
               onMouseEnter={() => onPrefetchInterval?.(tf.value)}
               onClick={() => onIntervalChange(tf.value)}
-              className={`h-[26px] px-1.5 rounded-[4px] text-[12.5px] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`h-[28px] px-2 rounded-[5px] text-[13px] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 active
                   ? 'bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)] font-semibold'
                   : 'text-[var(--text-main)] font-normal hover:bg-[var(--bg-hover)]'
@@ -233,7 +233,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           );
         })}
         {isCustomQuickTf && (
-          <span className="h-[26px] px-1.5 rounded-[4px] text-[12.5px] bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)] font-semibold inline-flex items-center">
+          <span className="h-[28px] px-2 rounded-[5px] text-[13px] bg-[#f0f3fa] dark:bg-[var(--bg-hover)] text-[var(--text-main)] font-semibold inline-flex items-center">
             {interval}
           </span>
         )}
@@ -244,14 +244,14 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={() => setTfMenuOpen((v) => !v)}
-          className="h-[26px] px-1 rounded-[4px] hover:bg-[var(--bg-hover)] inline-flex items-center gap-0.5 text-xs font-medium text-[var(--text-main)] transition-colors cursor-pointer"
+          className="h-[28px] px-1 rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center gap-0.5 text-[13px] font-medium text-[var(--text-main)] transition-colors cursor-pointer"
           title="Select Timeframe"
         >
           <span className="md:hidden font-semibold">{interval.toUpperCase()}</span>
-          <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+          <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
         </button>
         {tfMenuOpen && (
-          <div className="absolute left-0 top-[33px] w-40 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 z-50">
+          <div className="absolute left-0 top-[35px] w-40 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 z-50">
             {ALL_TFS.map((tf) => (
               <button
                 key={tf.value}
@@ -275,20 +275,20 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      <div className="w-px h-[18px] bg-[var(--border)] mx-0.5 shrink-0" />
+      <div className="w-px h-[20px] bg-[var(--border)] mx-0.5 shrink-0" />
 
       {/* Chart Type Dropdown (Hollow Candles Icon) */}
       <div className="relative shrink-0" ref={ctRef}>
         <button
           type="button"
           onClick={() => setCtMenuOpen((v) => !v)}
-          className="h-[28px] px-1.5 rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors whitespace-nowrap cursor-pointer"
+          className="h-[30px] px-2 rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors whitespace-nowrap cursor-pointer"
           title={`Chart Style: ${currentCt.label}`}
         >
           {currentCt.icon}
         </button>
         {ctMenuOpen && (
-          <div className="absolute left-0 top-[33px] w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 z-50">
+          <div className="absolute left-0 top-[35px] w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 z-50">
             {CHART_TYPES.map((ct) => (
               <button
                 key={ct.value}
@@ -311,48 +311,48 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      <div className="w-px h-[18px] bg-[var(--border)] mx-0.5 shrink-0" />
+      <div className="w-px h-[20px] bg-[var(--border)] mx-0.5 shrink-0" />
 
       {/* Indicators */}
       <button
         type="button"
         onClick={onOpenIndicators}
-        className="h-[28px] px-1.5 rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1 text-[12.5px] font-normal text-[var(--text-main)] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+        className="h-[30px] px-2 rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1.5 text-[13px] font-normal text-[var(--text-main)] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         title={`Indicators (${activeIndicatorCount} active)`}
       >
-        <IndicatorsChartIcon className="w-[17px] h-[17px]" />
+        <IndicatorsChartIcon className="w-[19px] h-[19px]" />
         <span className="hidden sm:inline">Indicators</span>
-        <ChevronDown className="w-3 h-3 text-[var(--text-muted)]" />
+        <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
       </button>
 
-      <div className="w-px h-[18px] bg-[var(--border)] mx-0.5 shrink-0" />
+      <div className="w-px h-[20px] bg-[var(--border)] mx-0.5 shrink-0" />
 
       {/* Alert & Replay */}
       <button
         type="button"
         onClick={onOpenAlertModal}
-        className="h-[28px] px-1.5 rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1 text-[12.5px] font-normal text-[var(--text-main)] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+        className="h-[30px] px-2 rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1.5 text-[13px] font-normal text-[var(--text-main)] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         title="Create Alert (Alt+A)"
       >
-        <AlertClockSparkleIcon className="w-[17px] h-[17px]" />
+        <AlertClockSparkleIcon className="w-[19px] h-[19px]" />
         <span className="hidden lg:inline">Alert</span>
       </button>
 
       <button
         type="button"
         onClick={onToggleReplay}
-        className={`h-[28px] px-1.5 rounded-[5px] inline-flex items-center gap-1 text-[12.5px] font-normal transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+        className={`h-[30px] px-2 rounded-[5px] inline-flex items-center gap-1.5 text-[13px] font-normal transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
           isReplayMode
             ? 'bg-[var(--accent)] text-white'
             : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
         }`}
         title="Bar Replay"
       >
-        <ReplayChevronsIcon className="w-[16px] h-[16px]" />
+        <ReplayChevronsIcon className="w-[18px] h-[18px]" />
         <span className="hidden lg:inline">{isReplayMode ? 'Exit Replay' : 'Replay'}</span>
       </button>
 
-      <div className="hidden sm:block w-px h-[18px] bg-[var(--border)] mx-0.5 shrink-0" />
+      <div className="hidden sm:block w-px h-[20px] bg-[var(--border)] mx-0.5 shrink-0" />
 
       {/* Undo / Redo */}
       <div className="hidden sm:flex items-center gap-0.5 shrink-0">
@@ -360,19 +360,19 @@ export const TopBar: React.FC<TopBarProps> = ({
           type="button"
           onClick={onUndo}
           disabled={!canUndo}
-          className="h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer"
+          className="h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer"
           title="Undo (Ctrl+Z)"
         >
-          <Undo2 className="w-[15px] h-[15px]" strokeWidth={1.5} />
+          <Undo2 className="w-[17px] h-[17px]" strokeWidth={1.55} />
         </button>
         <button
           type="button"
           onClick={onRedo}
           disabled={!canRedo}
-          className="h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer"
+          className="h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer"
           title="Redo (Ctrl+Y)"
         >
-          <Redo2 className="w-[15px] h-[15px]" strokeWidth={1.5} />
+          <Redo2 className="w-[17px] h-[17px]" strokeWidth={1.55} />
         </button>
       </div>
 
@@ -382,10 +382,10 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onToggleRightPanel}
-          className="hidden xl:inline-flex h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer"
+          className="hidden xl:inline-flex h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer"
           title="Toggle Watchlist Pane"
         >
-          <LayoutPaneIcon className="w-[16px] h-[16px]" />
+          <LayoutPaneIcon className="w-[18px] h-[18px]" />
         </button>
 
         {/* Saved Layout Label (Main / Save v) */}
@@ -394,13 +394,13 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={triggerSave}
-              className="h-[28px] px-1.5 rounded-l-[5px] hover:bg-[var(--bg-hover)] flex flex-col items-start justify-center leading-none cursor-pointer"
+              className="h-[30px] px-2 rounded-l-[5px] hover:bg-[var(--bg-hover)] flex flex-col items-start justify-center leading-none cursor-pointer"
               title="Save workspace layout"
             >
-              <span className="text-[12px] font-medium text-[var(--text-main)] leading-tight">
+              <span className="text-[12.5px] font-medium text-[var(--text-main)] leading-tight">
                 Main
               </span>
-              <span className="text-[9.5px] text-[var(--text-muted)] inline-flex items-center gap-0.5 leading-none">
+              <span className="text-[10px] text-[var(--text-muted)] inline-flex items-center gap-0.5 leading-none">
                 {justSaved ? (
                   <>
                     <Check className="w-2.5 h-2.5 text-[#089981]" />
@@ -414,14 +414,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               type="button"
               onClick={() => setSaveMenuOpen((v) => !v)}
-              className="h-[28px] px-0.5 rounded-r-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-muted)] cursor-pointer"
+              className="h-[30px] px-0.5 rounded-r-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-muted)] cursor-pointer"
               title="Layout Options"
             >
-              <ChevronDown className="w-3 h-3" />
+              <ChevronDown className="w-3.5 h-3.5" />
             </button>
           </div>
           {saveMenuOpen && (
-            <div className="absolute right-0 top-[33px] w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 z-50 text-xs text-[var(--text-main)]">
+            <div className="absolute right-0 top-[35px] w-44 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-xl py-1 z-50 text-xs text-[var(--text-main)]">
               <button
                 type="button"
                 onClick={() => {
@@ -456,37 +456,37 @@ export const TopBar: React.FC<TopBarProps> = ({
           )}
         </div>
 
-        <div className="hidden lg:block w-px h-[18px] bg-[var(--border)] mx-0.5 shrink-0" />
+        <div className="hidden lg:block w-px h-[20px] bg-[var(--border)] mx-0.5 shrink-0" />
 
         <button
           type="button"
           onClick={onOpenSearch}
-          className="h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer"
+          className="h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer"
           title="Quick Search (Ctrl+K)"
         >
-          <Search className="w-[16px] h-[16px]" strokeWidth={1.5} />
+          <Search className="w-[18px] h-[18px]" strokeWidth={1.55} />
         </button>
 
         {/* Hexagon Nut Settings Icon (Exact TradingView Match) */}
         <button
           type="button"
           onClick={onOpenSettings}
-          className="h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer"
+          className="h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer"
           title="Chart Settings"
         >
-          <HexSettingsIcon className="w-[17px] h-[17px]" />
+          <HexSettingsIcon className="w-[19px] h-[19px]" />
         </button>
 
         {/* 4-Corner Brackets Fullscreen Icon */}
         <button
           type="button"
           onClick={toggleFullscreen}
-          className={`hidden sm:inline-flex h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] items-center justify-center transition-colors cursor-pointer ${
+          className={`hidden sm:inline-flex h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] items-center justify-center transition-colors cursor-pointer ${
             isFullscreen ? 'bg-[var(--bg-hover)] text-[var(--accent)]' : 'text-[var(--text-main)]'
           }`}
           title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Mode'}
         >
-          <CornerFullscreenIcon className="w-[16px] h-[16px]" />
+          <CornerFullscreenIcon className="w-[18px] h-[18px]" />
         </button>
 
         {/* Camera / Chart Snapshot Dropdown (Exact TradingView Menu) */}
@@ -494,20 +494,20 @@ export const TopBar: React.FC<TopBarProps> = ({
           <button
             type="button"
             onClick={() => setSnapMenuOpen((v) => !v)}
-            className={`h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer ${
+            className={`h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors cursor-pointer ${
               snapMenuOpen ? 'bg-[var(--bg-hover)]' : ''
             }`}
             title="Take a snapshot"
             aria-haspopup="menu"
             aria-expanded={snapMenuOpen}
           >
-            <Camera className="w-[16px] h-[16px]" strokeWidth={1.5} />
+            <Camera className="w-[18px] h-[18px]" strokeWidth={1.55} />
           </button>
 
           {snapMenuOpen && (
             <div
               role="menu"
-              className="absolute right-0 top-[33px] w-[262px] bg-[var(--bg-surface)] border border-black/[0.08] dark:border-white/[0.12] rounded-[10px] shadow-[0_8px_28px_rgba(0,0,0,0.14)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)] py-2 z-50 select-none"
+              className="absolute right-0 top-[35px] w-[262px] bg-[var(--bg-surface)] border border-black/[0.08] dark:border-white/[0.12] rounded-[10px] shadow-[0_8px_28px_rgba(0,0,0,0.14)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)] py-2 z-50 select-none"
             >
               <div className="px-4 pt-1 pb-2 text-[11px] font-medium tracking-[0.06em] uppercase text-[var(--text-muted)]">
                 Chart Snapshot
@@ -610,14 +610,14 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onToggleTheme}
-          className="h-[28px] w-[28px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors shrink-0 cursor-pointer"
+          className="h-[30px] w-[30px] rounded-[5px] hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] transition-colors shrink-0 cursor-pointer"
           title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           aria-label={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
         >
           {isDarkMode ? (
-            <Sun className="w-[16px] h-[16px]" strokeWidth={1.5} />
+            <Sun className="w-[18px] h-[18px]" strokeWidth={1.55} />
           ) : (
-            <Moon className="w-[16px] h-[16px]" strokeWidth={1.5} />
+            <Moon className="w-[18px] h-[18px]" strokeWidth={1.55} />
           )}
         </button>
 
@@ -625,7 +625,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={onToggleTrade}
-          className={`h-[26px] px-3 ml-0.5 rounded-full border text-[12.5px] font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+          className={`h-[28px] px-3.5 ml-0.5 rounded-full border text-[13px] font-medium inline-flex items-center gap-1 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
             isTradeOpen
               ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
               : 'border-[var(--border)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
@@ -634,7 +634,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         >
           <span>Trade</span>
           {openPositionsCount > 0 && (
-            <span className="font-mono-num text-[11px] font-bold">({openPositionsCount})</span>
+            <span className="font-mono-num text-[11.5px] font-bold">({openPositionsCount})</span>
           )}
         </button>
       </div>
