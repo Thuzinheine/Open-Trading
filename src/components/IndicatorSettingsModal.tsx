@@ -440,18 +440,7 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
   };
 
   return (
-    <div
-      className={`fixed inset-0 z-50 flex items-center justify-center px-4 ${
-        pinned ? 'pointer-events-none bg-transparent' : 'bg-black/35'
-      }`}
-      onClick={() => {
-        if (activePicker) {
-          setActivePicker(null);
-          return;
-        }
-        if (!pinned) onClose();
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
       <div
         onClick={(e) => {
           e.stopPropagation();
@@ -461,12 +450,13 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
         style={{
           transform: `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`,
         }}
-        className="pointer-events-auto w-full max-w-[392px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-2xl flex flex-col select-none"
+        className="pointer-events-auto w-full max-w-[392px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.2)] flex flex-col select-none"
       >
-        {/* Header (Draggable) */}
+        {/* Header (Freely Draggable) */}
         <div
           onMouseDown={handleHeaderDrag}
-          className="px-5 pt-4 pb-2 flex items-center justify-between cursor-move"
+          title="Drag to move anywhere on chart"
+          className="px-5 pt-4 pb-2 flex items-center justify-between cursor-grab active:cursor-grabbing"
         >
           <h2 className="text-[19px] font-bold tracking-tight text-[var(--text-main)]">
             {isVol ? 'Vol' : 'SMA/EMA'}
@@ -587,7 +577,7 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
                         onChange={(e) =>
                           patchMaLine(item.key, { source: e.target.value as PriceSource })
                         }
-                        className="w-[108px] h-[34px] px-2 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
+                        className="tv-select w-[108px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
                       >
                         {SOURCE_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -699,7 +689,7 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
                     onChange={(e) =>
                       patchVolume({ precision: e.target.value as IndicatorPrecision })
                     }
-                    className="w-[116px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
+                    className="tv-select w-[116px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
                     {PRECISION_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>
@@ -827,7 +817,7 @@ export const IndicatorSettingsModal: React.FC<IndicatorSettingsModalProps> = ({
                     onChange={(e) =>
                       patchSmaEma({ precision: e.target.value as IndicatorPrecision })
                     }
-                    className="w-[116px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
+                    className="tv-select w-[116px] h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer"
                   >
                     {PRECISION_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>

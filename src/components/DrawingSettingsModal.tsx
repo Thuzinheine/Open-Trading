@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Pencil, ChevronDown, Trash2 } from 'lucide-react';
+import { X, Pencil, ChevronDown, Trash2, Check } from 'lucide-react';
 import {
   CandleBar,
   DrawingLineStyle,
   DrawingObject,
   DrawingTemplate,
   DrawingVisibility,
-  LineEndCap,
   LineExtendMode,
   StatsDisplayMode,
   StatsPosition,
@@ -15,6 +14,7 @@ import {
   Timeframe,
 } from '../types/trading';
 import { ALL_TOOLS_MAP } from '../utils/drawingToolsCatalog';
+import { getTickSizeForPrice } from '../utils/drawingRenderer';
 import { DEFAULT_VISIBILITY } from '../utils/storage';
 import { INTERVAL_SECONDS } from '../utils/binance';
 import { ColorPalettePopover } from './ColorPalettePopover';
@@ -32,9 +32,11 @@ interface DrawingSettingsModalProps {
   onDeleteTemplate: (id: string) => void;
 }
 
-export type SettingsTab = 'style' | 'text' | 'coordinates' | 'visibility';
+export type SettingsTab = 'inputs' | 'style' | 'text' | 'coordinates' | 'visibility';
 
 const FONT_SIZES = [10, 11, 12, 14, 16, 18, 20, 24];
+const ACCOUNT_CURRENCIES = ['Default', 'USD', 'USDT', 'EUR', 'BTC'];
+const QTY_PRECISIONS = ['Default', '0', '1', '2', '3', '4', '5', '6', '8'];
 
 const LINE_TOOLS = new Set(['trendline', 'ray', 'infoline', 'extended', 'angle', 'arrow_line']);
 const SHAPE_FILL_TOOLS = new Set([
@@ -45,6 +47,37 @@ const SHAPE_FILL_TOOLS = new Set([
   'flat_channel',
   'disjoint_channel',
 ]);
+
+const CHECKERBOARD_BG: React.CSSProperties = {
+  backgroundImage:
+    'linear-gradient(45deg, #d1d4dc 25%, transparent 25%), linear-gradient(-45deg, #d1d4dc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d1d4dc 75%), linear-gradient(-45deg, transparent 75%, #d1d4dc 75%)',
+  backgroundSize: '8px 8px',
+  backgroundPosition: '0 0, 0 4px, 4px -4px, -4px 0',
+  backgroundColor: '#ffffff',
+};
+
+const TvCheckbox: React.FC<{
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label?: string;
+}> = ({ checked, onChange, label }) => (
+  <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`w-[18px] h-[18px] rounded-[4px] border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
+        checked
+          ? 'bg-[#131722] dark:bg-[var(--accent)] border-[#131722] dark:border-[var(--accent)] text-white'
+          : 'bg-[var(--bg-surface)] border-[#b2b5be] dark:border-[#5d606b] hover:border-[var(--text-main)]'
+      }`}
+    >
+      {checked && <Check className="w-3 h-3" strokeWidth={3} />}
+    </button>
+    {label && <span className="text-[13px] text-[var(--text-main)]">{label}</span>}
+  </label>
+);
 
 const VisibilityDualSlider: React.FC<{
   minLimit: number;
@@ -134,8 +167,9 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
   const [showSaveTplInput, setShowSaveTplInput] = useState(false);
-  const [lineColorPickerOpen, setLineColorPickerOpen] = useState(false);
-  const [textColorPickerOpen, setTextColorPickerOpen] = useState(false);
+  const [activePopover, setActivePopover] = useState<
+    'none' | 'line' | 'text' | 'stopColor' | 'targetColor'
+  >('none');
   const [modalOffset, setModalOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const dragRef = React.useRef<{
     startX: number;
@@ -165,13 +199,21 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
 
   useEffect(() => {
     if (open && drawing) {
-      setTab(initialTab);
+      const isPos = drawing.type === 'long_pos' || drawing.type === 'short_pos';
+      if (isPos) {
+        setTab(
+          initialTab === 'style' || initialTab === 'visibility' || initialTab === 'inputs'
+            ? initialTab
+            : 'inputs'
+        );
+      } else {
+        setTab(initialTab === 'inputs' ? 'style' : initialTab);
+      }
       setOriginalSnapshot(JSON.parse(JSON.stringify(drawing)));
       setEditingTitle(false);
       setTemplateMenuOpen(false);
       setShowSaveTplInput(false);
-      setLineColorPickerOpen(false);
-      setTextColorPickerOpen(false);
+      setActivePopover('none');
       setModalOffset({ x: 0, y: 0 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -179,8 +221,17 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
 
   if (!open || !drawing) return null;
 
+  const isPositionTool = drawing.type === 'long_pos' || drawing.type === 'short_pos';
+  const isLong = drawing.type === 'long_pos';
   const toolDef = ALL_TOOLS_MAP[drawing.type];
-  const displayTitle = drawing.title || toolDef?.label || 'Drawing';
+  const displayTitle =
+    drawing.title ||
+    (drawing.type === 'long_pos'
+      ? 'Long position'
+      : drawing.type === 'short_pos'
+      ? 'Short position'
+      : toolDef?.label || 'Drawing');
+
   const visibility: DrawingVisibility = drawing.visibility
     ? {
         ...DEFAULT_VISIBILITY,
@@ -269,19 +320,19 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
     onSaveTemplate({
       id: `tpl-${Date.now()}`,
       name,
-      color: drawing.color || '#2962ff',
-      lineWidth: drawing.lineWidth || 2,
+      color: drawing.color || (isPositionTool ? '#787b86' : '#2962ff'),
+      lineWidth: drawing.lineWidth || (isPositionTool ? 1 : 2),
       lineStyle: drawing.lineStyle || 'solid',
       extend: drawing.extend || 'none',
       leftEnd: drawing.leftEnd || 'normal',
       rightEnd: drawing.rightEnd || 'normal',
       showMiddlePoint: Boolean(drawing.showMiddlePoint),
-      showPriceLabels: Boolean(drawing.showPriceLabels),
-      statsMode: drawing.statsMode || 'hidden',
+      showPriceLabels: isPositionTool ? drawing.showPriceLabels !== false : Boolean(drawing.showPriceLabels),
+      statsMode: drawing.statsMode || (isPositionTool ? 'all' : 'hidden'),
       statsPosition: drawing.statsPosition || 'right',
       alwaysShowStats: Boolean(drawing.alwaysShowStats),
-      textColor: drawing.textColor || drawing.color || '#2962ff',
-      fontSize: drawing.fontSize || 14,
+      textColor: drawing.textColor || (isPositionTool ? '#ffffff' : drawing.color || '#2962ff'),
+      fontSize: drawing.fontSize || (isPositionTool ? 12 : 14),
       fontBold: Boolean(drawing.fontBold),
       fontItalic: Boolean(drawing.fontItalic),
       textAlignV: drawing.textAlignV || 'top',
@@ -295,16 +346,45 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
   const isLineLike = LINE_TOOLS.has(drawing.type);
   const isShapeFill = SHAPE_FILL_TOOLS.has(drawing.type);
 
+  // Position tool derived live values
+  const posEntry = drawing.p1?.price ?? 0;
+  const posTarget = drawing.targetPrice ?? (isLong ? posEntry * 1.04 : posEntry * 0.96);
+  const posStop = drawing.stopPrice ?? (isLong ? posEntry * 0.98 : posEntry * 1.02);
+  const posTick = getTickSizeForPrice(posEntry || 100);
+  const profitTicks = Math.max(0, Math.round(Math.abs(posTarget - posEntry) / posTick));
+  const stopTicks = Math.max(0, Math.round(Math.abs(posEntry - posStop) / posTick));
+  const posPriceDecimals = posEntry >= 100 ? 2 : posEntry >= 1 ? 4 : 6;
+
+  const inputCls =
+    'h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[13px] outline-none focus:border-[var(--accent)] transition-colors';
+  const selectCls =
+    'tv-select h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer transition-colors';
+
+  const tabsList: { id: SettingsTab; label: string }[] = isPositionTool
+    ? [
+        { id: 'inputs', label: 'Inputs' },
+        { id: 'style', label: 'Style' },
+        { id: 'visibility', label: 'Visibility' },
+      ]
+    : [
+        { id: 'style', label: 'Style' },
+        { id: 'text', label: 'Text' },
+        { id: 'coordinates', label: 'Coordinates' },
+        { id: 'visibility', label: 'Visibility' },
+      ];
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center px-4 select-none pointer-events-none"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 select-none pointer-events-none">
       <div
         style={{ transform: `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)` }}
-        className="pointer-events-auto w-full max-w-[420px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.22)] overflow-visible flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        className="pointer-events-auto w-full max-w-[396px] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.2)] overflow-visible flex flex-col"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (activePopover !== 'none') setActivePopover('none');
+          if (templateMenuOpen) setTemplateMenuOpen(false);
+        }}
       >
-        {/* Draggable Header */}
+        {/* Freely Draggable Header (TradingView Hand Grab Cursor) */}
         <div
           onMouseDown={(e) => {
             if ((e.target as HTMLElement).closest('button, input')) return;
@@ -315,7 +395,8 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
               origY: modalOffset.y,
             };
           }}
-          className="px-5 pt-4 pb-2 flex items-center justify-between cursor-move"
+          className="px-5 pt-4 pb-2 flex items-center justify-between cursor-grab active:cursor-grabbing"
+          title="Drag to move anywhere on chart"
         >
           <div className="flex items-center gap-2 min-w-0">
             {editingTitle ? (
@@ -328,77 +409,577 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') setEditingTitle(false);
                 }}
-                className="text-base font-bold bg-[var(--bg-app)] text-[var(--text-main)] border border-[var(--accent)] rounded px-2 py-0.5 outline-none w-52"
+                className="text-base font-bold bg-[var(--bg-app)] text-[var(--text-main)] border border-[var(--accent)] rounded-[6px] px-2 py-0.5 outline-none w-52"
               />
             ) : (
               <>
-                <h2 className="text-[17px] font-bold text-[var(--text-main)] truncate">
+                <h2 className="text-[19px] font-bold tracking-tight text-[var(--text-main)] truncate">
                   {displayTitle}
                 </h2>
                 <button
+                  type="button"
                   onClick={() => setEditingTitle(true)}
                   title="Rename drawing"
                   className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
                 >
-                  <Pencil className="w-3.5 h-3.5" />
+                  <Pencil className="w-4 h-4" strokeWidth={1.6} />
                 </button>
               </>
             )}
           </div>
           <button
+            type="button"
             onClick={handleCancel}
-            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+            className="w-8 h-8 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-[18px] h-[18px]" strokeWidth={1.6} />
           </button>
         </div>
 
-        {/* 4 Tabs */}
-        <div className="px-5 border-b border-[var(--border)] flex items-center gap-5 text-[13px] font-semibold">
-          {(
-            [
-              { id: 'style', label: 'Style' },
-              { id: 'text', label: 'Text' },
-              { id: 'coordinates', label: 'Coordinates' },
-              { id: 'visibility', label: 'Visibility' },
-            ] as const
-          ).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`py-2.5 border-b-2 transition-colors cursor-pointer ${
-                tab === t.id
-                  ? 'border-[var(--text-main)] text-[var(--text-main)]'
-                  : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text-main)]'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        {/* Tabs */}
+        <div className="px-5 border-b border-[var(--border)] flex items-center gap-5 text-[13.5px] font-semibold">
+          {tabsList.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => {
+                  setTab(t.id);
+                  setActivePopover('none');
+                }}
+                className={`relative pb-2.5 pt-1 transition-colors cursor-pointer ${
+                  active
+                    ? 'text-[var(--text-main)]'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text-main)]'
+                }`}
+              >
+                {t.label}
+                {active && (
+                  <span className="absolute left-0 right-0 bottom-0 h-[2.5px] rounded-t bg-[#131722] dark:bg-white" />
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Tab Body */}
         <div
-          className={`px-5 py-4 min-h-[290px] text-[13px] space-y-3.5 ${
-            tab === 'visibility' || tab === 'coordinates'
-              ? 'max-h-[60vh] overflow-y-auto'
+          className={`px-5 py-4 min-h-[296px] text-[13px] space-y-3.5 ${
+            tab === 'visibility' || tab === 'coordinates' || tab === 'inputs'
+              ? 'max-h-[64vh] overflow-y-auto'
               : 'overflow-visible'
           }`}
         >
-          {/* ===== TAB 1: STYLE ===== */}
-          {tab === 'style' && (
-            <>
-              {/* Line Row: TradingView Swatch + Line Preview Pill (Color + Thickness + Line Style Popover) + Left/Right End Caps */}
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-[var(--text-main)] font-normal">Line</span>
+          {/* ===== LONG / SHORT POSITION: INPUTS TAB (Exact TradingView Layout) ===== */}
+          {tab === 'inputs' && isPositionTool && (
+            <div className="space-y-3">
+              {/* Account size + Currency */}
+              <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                <span className="text-[var(--text-main)]">Account size</span>
+                <input
+                  type="number"
+                  step="any"
+                  min={0}
+                  value={drawing.accountSize ?? 1000}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!Number.isNaN(v)) patch({ accountSize: Math.max(0, v) });
+                  }}
+                  className={`${inputCls} w-full`}
+                />
+                <select
+                  value={drawing.accountCurrency || 'Default'}
+                  onChange={(e) => patch({ accountCurrency: e.target.value })}
+                  className={`${selectCls} w-full`}
+                >
+                  {ACCOUNT_CURRENCIES.map((cur) => (
+                    <option key={cur} value={cur} className="bg-[var(--bg-surface)]">
+                      {cur}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Lot size */}
+              <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                <span className="text-[var(--text-main)]">Lot size</span>
+                <input
+                  type="number"
+                  step="any"
+                  min={0.0001}
+                  value={drawing.lotSize ?? 1}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!Number.isNaN(v)) patch({ lotSize: Math.max(0.0001, v) });
+                  }}
+                  className={`${inputCls} w-full`}
+                />
+                <div />
+              </div>
+
+              {/* Risk + Unit (% / Currency) */}
+              <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                <span className="text-[var(--text-main)]">Risk</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={Number((drawing.risk ?? 25).toFixed(2))}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!Number.isNaN(v)) patch({ risk: Math.max(0, v) });
+                  }}
+                  className={`${inputCls} w-full`}
+                />
+                <select
+                  value={drawing.riskUnit || '%'}
+                  onChange={(e) => patch({ riskUnit: e.target.value as '%' | 'currency' })}
+                  className={`${selectCls} w-full`}
+                >
+                  <option value="%" className="bg-[var(--bg-surface)]">
+                    %
+                  </option>
+                  <option value="currency" className="bg-[var(--bg-surface)]">
+                    {drawing.accountCurrency && drawing.accountCurrency !== 'Default'
+                      ? drawing.accountCurrency
+                      : 'USDT'}
+                  </option>
+                </select>
+              </div>
+
+              {/* Entry price */}
+              <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                <span className="text-[var(--text-main)]">Entry price</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={Number(posEntry.toFixed(posPriceDecimals))}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!Number.isNaN(v) && drawing.p1 && drawing.p2) {
+                      patch({
+                        p1: { ...drawing.p1, price: v },
+                        p2: { ...drawing.p2, price: v },
+                      });
+                    }
+                  }}
+                  className={`${inputCls} w-full`}
+                />
+                <div />
+              </div>
+
+              {/* Leverage */}
+              <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                <span className="text-[var(--text-main)]">Leverage</span>
+                <input
+                  type="number"
+                  step="any"
+                  min={1}
+                  value={drawing.leverage ?? 10000}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    if (!Number.isNaN(v)) patch({ leverage: Math.max(1, v) });
+                  }}
+                  className={`${inputCls} w-full`}
+                />
+                <div />
+              </div>
+
+              {/* PROFIT LEVEL */}
+              <div className="pt-2 space-y-3">
+                <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  PROFIT LEVEL
+                </div>
+                <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                  <span className="text-[var(--text-main)]">Ticks</span>
+                  <input
+                    type="number"
+                    step={1}
+                    min={1}
+                    value={profitTicks}
+                    onChange={(e) => {
+                      const t = parseInt(e.target.value, 10);
+                      if (!Number.isNaN(t) && t >= 0) {
+                        const nextTarget = isLong
+                          ? posEntry + t * posTick
+                          : posEntry - t * posTick;
+                        patch({ targetPrice: Number(nextTarget.toFixed(posPriceDecimals)) });
+                      }
+                    }}
+                    className={`${inputCls} w-full`}
+                  />
+                  <div />
+                </div>
+                <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                  <span className="text-[var(--text-main)]">Price</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={Number(posTarget.toFixed(posPriceDecimals))}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!Number.isNaN(v)) patch({ targetPrice: v });
+                    }}
+                    className={`${inputCls} w-full`}
+                  />
+                  <div />
+                </div>
+              </div>
+
+              {/* STOP LEVEL */}
+              <div className="pt-2 space-y-3">
+                <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  STOP LEVEL
+                </div>
+                <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                  <span className="text-[var(--text-main)]">Ticks</span>
+                  <input
+                    type="number"
+                    step={1}
+                    min={1}
+                    value={stopTicks}
+                    onChange={(e) => {
+                      const t = parseInt(e.target.value, 10);
+                      if (!Number.isNaN(t) && t >= 0) {
+                        const nextStop = isLong
+                          ? posEntry - t * posTick
+                          : posEntry + t * posTick;
+                        patch({ stopPrice: Number(nextStop.toFixed(posPriceDecimals)) });
+                      }
+                    }}
+                    className={`${inputCls} w-full`}
+                  />
+                  <div />
+                </div>
+                <div className="grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                  <span className="text-[var(--text-main)]">Price</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={Number(posStop.toFixed(posPriceDecimals))}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      if (!Number.isNaN(v)) patch({ stopPrice: v });
+                    }}
+                    className={`${inputCls} w-full`}
+                  />
+                  <div />
+                </div>
+              </div>
+
+              {/* QTY precision */}
+              <div className="pt-1 grid grid-cols-[112px_1fr_1fr] items-center gap-2.5">
+                <span className="text-[var(--text-main)]">QTY precision</span>
+                <select
+                  value={drawing.qtyPrecision || 'Default'}
+                  onChange={(e) => patch({ qtyPrecision: e.target.value })}
+                  className={`${selectCls} w-full`}
+                >
+                  {QTY_PRECISIONS.map((p) => (
+                    <option key={p} value={p} className="bg-[var(--bg-surface)]">
+                      {p}
+                    </option>
+                  ))}
+                </select>
+                <div />
+              </div>
+            </div>
+          )}
+
+          {/* ===== LONG / SHORT POSITION: STYLE TAB (Exact TradingView Layout) ===== */}
+          {tab === 'style' && isPositionTool && (
+            <div className="space-y-3.5">
+              {/* Lines Row */}
+              <div className="grid grid-cols-[112px_1fr] items-center gap-3">
+                <span className="text-[var(--text-main)]">Lines</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActivePopover((p) => (p === 'line' ? 'none' : 'line'));
+                    }}
+                    title="Line Color, Thickness & Style"
+                    className="h-[34px] px-2 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] inline-flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <span
+                      className="w-[22px] h-[22px] rounded-[4px] border border-black/15 shrink-0"
+                      style={{ backgroundColor: drawing.color || '#787b86' }}
+                    />
+                    <svg width="32" height="12" viewBox="0 0 32 12" fill="none">
+                      <line
+                        x1="1"
+                        y1="6"
+                        x2="31"
+                        y2="6"
+                        stroke={drawing.color || '#787b86'}
+                        strokeWidth={Math.max(1.2, Math.min(3.5, drawing.lineWidth || 1))}
+                        strokeDasharray={
+                          drawing.lineStyle === 'dashed'
+                            ? '6 3'
+                            : drawing.lineStyle === 'dotted'
+                            ? '2 2.5'
+                            : undefined
+                        }
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </button>
+
+                  {activePopover === 'line' && (
+                    <div
+                      className="absolute left-0 top-10 z-50 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-2xl p-3 w-[256px] space-y-2.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ColorPalettePopover
+                        inline
+                        value={drawing.color || '#787b86'}
+                        onChange={(c) => patch({ color: c })}
+                        onClose={() => setActivePopover('none')}
+                      />
+                      <div className="border-t border-[var(--border)] pt-2 space-y-1.5">
+                        <div className="text-[11px] font-medium text-[var(--text-muted)]">Thickness</div>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[1, 2, 3, 4].map((w) => (
+                            <button
+                              key={w}
+                              type="button"
+                              onClick={() => patch({ lineWidth: w })}
+                              className={`h-7 rounded-[5px] border flex items-center justify-center cursor-pointer ${
+                                Math.round(drawing.lineWidth || 1) === w
+                                  ? 'border-[var(--accent)] bg-[var(--bg-active)]'
+                                  : 'border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                              }`}
+                            >
+                              <span
+                                className="w-6 rounded-full bg-[var(--text-main)]"
+                                style={{ height: `${w}px` }}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="border-t border-[var(--border)] pt-2 space-y-1.5">
+                        <div className="text-[11px] font-medium text-[var(--text-muted)]">Line style</div>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['solid', 'dashed', 'dotted'] as DrawingLineStyle[]).map((st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => patch({ lineStyle: st })}
+                              className={`h-7 rounded-[5px] border flex items-center justify-center cursor-pointer ${
+                                (drawing.lineStyle || 'solid') === st
+                                  ? 'border-[var(--accent)] bg-[var(--bg-active)]'
+                                  : 'border-[var(--border)] hover:bg-[var(--bg-hover)]'
+                              }`}
+                            >
+                              <svg width="32" height="6" viewBox="0 0 32 6" fill="none">
+                                <line
+                                  x1="1"
+                                  y1="3"
+                                  x2="31"
+                                  y2="3"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeDasharray={
+                                    st === 'dashed' ? '5 3' : st === 'dotted' ? '2 2.5' : undefined
+                                  }
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Stop color (checkerboard translucent swatch) */}
+              <div className="grid grid-cols-[112px_1fr] items-center gap-3">
+                <span className="text-[var(--text-main)]">Stop color</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActivePopover((p) => (p === 'stopColor' ? 'none' : 'stopColor'));
+                    }}
+                    title="Stop zone color & opacity"
+                    className="w-[34px] h-[34px] rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] p-[4px] flex items-center justify-center cursor-pointer"
+                  >
+                    <span
+                      className="w-full h-full rounded-[4px] border border-black/10 relative overflow-hidden block"
+                      style={CHECKERBOARD_BG}
+                    >
+                      <span
+                        className="absolute inset-0"
+                        style={{ backgroundColor: drawing.stopColor || 'rgba(242, 54, 69, 0.2)' }}
+                      />
+                    </span>
+                  </button>
+                  {activePopover === 'stopColor' && (
+                    <ColorPalettePopover
+                      align="left"
+                      value={drawing.stopColor || 'rgba(242, 54, 69, 0.2)'}
+                      onChange={(c) => patch({ stopColor: c })}
+                      onClose={() => setActivePopover('none')}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Target color (checkerboard translucent swatch) */}
+              <div className="grid grid-cols-[112px_1fr] items-center gap-3">
+                <span className="text-[var(--text-main)]">Target color</span>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActivePopover((p) => (p === 'targetColor' ? 'none' : 'targetColor'));
+                    }}
+                    title="Target zone color & opacity"
+                    className="w-[34px] h-[34px] rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] p-[4px] flex items-center justify-center cursor-pointer"
+                  >
+                    <span
+                      className="w-full h-full rounded-[4px] border border-black/10 relative overflow-hidden block"
+                      style={CHECKERBOARD_BG}
+                    >
+                      <span
+                        className="absolute inset-0"
+                        style={{ backgroundColor: drawing.targetColor || 'rgba(8, 153, 129, 0.2)' }}
+                      />
+                    </span>
+                  </button>
+                  {activePopover === 'targetColor' && (
+                    <ColorPalettePopover
+                      align="left"
+                      value={drawing.targetColor || 'rgba(8, 153, 129, 0.2)'}
+                      onChange={(c) => patch({ targetColor: c })}
+                      onClose={() => setActivePopover('none')}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* Text color + Font Size */}
+              <div className="grid grid-cols-[112px_1fr] items-center gap-3">
+                <span className="text-[var(--text-main)]">Text</span>
                 <div className="flex items-center gap-2">
-                  {/* TradingView Compact Color + Line Style Preview Button */}
                   <div className="relative">
                     <button
                       type="button"
-                      onClick={() => setLineColorPickerOpen((v) => !v)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActivePopover((p) => (p === 'text' ? 'none' : 'text'));
+                      }}
+                      title="Stats Text Color"
+                      className="w-[34px] h-[34px] rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] p-[4px] flex items-center justify-center cursor-pointer"
+                    >
+                      <span
+                        className="w-full h-full rounded-[4px] border border-[var(--border)] block"
+                        style={{ backgroundColor: drawing.textColor || '#ffffff' }}
+                      />
+                    </button>
+                    {activePopover === 'text' && (
+                      <ColorPalettePopover
+                        align="left"
+                        value={drawing.textColor || '#ffffff'}
+                        onChange={(c) => patch({ textColor: c })}
+                        onClose={() => setActivePopover('none')}
+                      />
+                    )}
+                  </div>
+
+                  <select
+                    value={drawing.fontSize || 12}
+                    onChange={(e) => patch({ fontSize: parseInt(e.target.value, 10) })}
+                    className={`${selectCls} w-[96px] font-mono-num`}
+                  >
+                    {FONT_SIZES.map((sz) => (
+                      <option key={sz} value={sz} className="bg-[var(--bg-surface)]">
+                        {sz}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Price labels checkbox */}
+              <div className="pt-1">
+                <TvCheckbox
+                  checked={drawing.showPriceLabels !== false}
+                  onChange={(checked) => patch({ showPriceLabels: checked })}
+                  label="Price labels"
+                />
+              </div>
+
+              {/* INFO Section */}
+              <div className="pt-2 space-y-3.5">
+                <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                  INFO
+                </div>
+
+                <div className="grid grid-cols-[112px_1fr] items-center gap-3">
+                  <span className="text-[var(--text-main)]">Stats</span>
+                  <select
+                    value={drawing.statsMode || 'all'}
+                    onChange={(e) => patch({ statsMode: e.target.value as StatsDisplayMode })}
+                    className={`${selectCls} w-full`}
+                  >
+                    <option value="all" className="bg-[var(--bg-surface)]">
+                      TP price offset, TP %, R/R, PnL
+                    </option>
+                    <option value="price" className="bg-[var(--bg-surface)]">
+                      TP/SL price offset &amp; %
+                    </option>
+                    <option value="percent" className="bg-[var(--bg-surface)]">
+                      Open PnL, Qty &amp; R/R
+                    </option>
+                    <option value="hidden" className="bg-[var(--bg-surface)]">
+                      Hidden
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <TvCheckbox
+                    checked={Boolean(drawing.compactStatsMode)}
+                    onChange={(checked) => patch({ compactStatsMode: checked })}
+                    label="Compact stats mode"
+                  />
+                </div>
+
+                <div>
+                  <TvCheckbox
+                    checked={Boolean(drawing.alwaysShowStats)}
+                    onChange={(checked) => patch({ alwaysShowStats: checked })}
+                    label="Always show stats"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ===== ALL OTHER TOOLS: STYLE TAB ===== */}
+          {tab === 'style' && !isPositionTool && (
+            <>
+              {/* Line Row: Swatch + Line Preview Popover + Left/Right End Caps */}
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[var(--text-main)] font-normal">Line</span>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActivePopover((p) => (p === 'line' ? 'none' : 'line'));
+                      }}
                       title="Line Color, Thickness & Style"
-                      className="h-[34px] px-2 rounded-md border border-[var(--border)] bg-[var(--bg-app)] hover:border-[var(--text-muted)] inline-flex items-center gap-2 cursor-pointer"
+                      className="h-[34px] px-2 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] inline-flex items-center gap-2 cursor-pointer"
                     >
                       <span
                         className="w-[22px] h-[22px] rounded-[4px] border border-black/15 shrink-0"
@@ -424,19 +1005,17 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                       </svg>
                     </button>
 
-                    {lineColorPickerOpen && (
+                    {activePopover === 'line' && (
                       <div
-                        className="absolute right-0 top-10 z-50 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl p-2.5 w-[244px] space-y-2.5"
+                        className="absolute right-0 top-10 z-50 bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-2xl p-3 w-[256px] space-y-2.5"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <div className="relative">
-                          <ColorPalettePopover
-                            inline
-                            value={drawing.color || '#2962ff'}
-                            onChange={(c) => patch({ color: c })}
-                            onClose={() => setLineColorPickerOpen(false)}
-                          />
-                        </div>
+                        <ColorPalettePopover
+                          inline
+                          value={drawing.color || '#2962ff'}
+                          onChange={(c) => patch({ color: c })}
+                          onClose={() => setActivePopover('none')}
+                        />
                         <div className="border-t border-[var(--border)] pt-2 space-y-1.5">
                           <div className="text-[11px] font-medium text-[var(--text-muted)]">Thickness</div>
                           <div className="grid grid-cols-4 gap-1">
@@ -445,7 +1024,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                                 key={w}
                                 type="button"
                                 onClick={() => patch({ lineWidth: w })}
-                                className={`h-7 rounded border flex items-center justify-center cursor-pointer ${
+                                className={`h-7 rounded-[5px] border flex items-center justify-center cursor-pointer ${
                                   Math.round(drawing.lineWidth || 2) === w
                                     ? 'border-[var(--accent)] bg-[var(--bg-active)]'
                                     : 'border-[var(--border)] hover:bg-[var(--bg-hover)]'
@@ -467,7 +1046,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                                 key={st}
                                 type="button"
                                 onClick={() => patch({ lineStyle: st })}
-                                className={`h-7 rounded border flex items-center justify-center cursor-pointer ${
+                                className={`h-7 rounded-[5px] border flex items-center justify-center cursor-pointer ${
                                   (drawing.lineStyle || 'solid') === st
                                     ? 'border-[var(--accent)] bg-[var(--bg-active)]'
                                     : 'border-[var(--border)] hover:bg-[var(--bg-hover)]'
@@ -495,7 +1074,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                     )}
                   </div>
 
-                  {/* Left / Right End Cap Buttons (Normal vs Arrow — exact TradingView SVG) */}
+                  {/* Left / Right End Cap Buttons (Normal vs Arrow) */}
                   {isLineLike && (
                     <>
                       <button
@@ -506,10 +1085,10 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                           })
                         }
                         title={`Left end: ${drawing.leftEnd === 'arrow' ? 'Arrow' : 'Normal'}`}
-                        className={`h-8 w-8 rounded-md border flex items-center justify-center cursor-pointer ${
+                        className={`h-[34px] w-[34px] rounded-[6px] border flex items-center justify-center cursor-pointer ${
                           drawing.leftEnd === 'arrow'
                             ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
-                            : 'border-[var(--border)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                            : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
                         {drawing.leftEnd === 'arrow' ? (
@@ -532,10 +1111,10 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                           })
                         }
                         title={`Right end: ${drawing.rightEnd === 'arrow' ? 'Arrow' : 'Normal'}`}
-                        className={`h-8 w-8 rounded-md border flex items-center justify-center cursor-pointer ${
+                        className={`h-[34px] w-[34px] rounded-[6px] border flex items-center justify-center cursor-pointer ${
                           drawing.rightEnd === 'arrow'
                             ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
-                            : 'border-[var(--border)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                            : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                         }`}
                       >
                         {drawing.rightEnd === 'arrow' ? (
@@ -554,7 +1133,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 </div>
               </div>
 
-              {/* Extend Dropdown (for Trendline / Ray / Info Line / Extended) */}
+              {/* Extend Dropdown */}
               {isLineLike && (
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-[var(--text-main)]">Extend</span>
@@ -568,7 +1147,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         : 'none')
                     }
                     onChange={(e) => patch({ extend: e.target.value as LineExtendMode })}
-                    className="w-48 h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none focus:border-[var(--accent)] cursor-pointer"
+                    className={`${selectCls} w-48`}
                   >
                     <option value="none" className="bg-[var(--bg-surface)]">
                       Don&apos;t extend
@@ -597,7 +1176,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                       max={70}
                       value={drawing.fillOpacity ?? 14}
                       onChange={(e) => patch({ fillOpacity: parseInt(e.target.value, 10) })}
-                      className="flex-1 accent-[var(--accent)] cursor-pointer"
+                      className="flex-1 accent-[#131722] dark:accent-[var(--accent)] cursor-pointer"
                     />
                     <span className="font-mono-num text-xs w-9 text-right text-[var(--text-muted)]">
                       {drawing.fillOpacity ?? 14}%
@@ -606,41 +1185,37 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 </div>
               )}
 
-              {/* Middle Point & Price Labels Checkboxes */}
+              {/* Middle Point & Price Labels */}
               {isLineLike && (
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
+                <div>
+                  <TvCheckbox
                     checked={Boolean(drawing.showMiddlePoint)}
-                    onChange={(e) => patch({ showMiddlePoint: e.target.checked })}
-                    className="w-4 h-4 accent-[#131722] dark:accent-[var(--accent)] rounded"
+                    onChange={(checked) => patch({ showMiddlePoint: checked })}
+                    label="Middle point"
                   />
-                  <span className="text-[var(--text-main)]">Middle point</span>
-                </label>
+                </div>
               )}
 
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
+              <div>
+                <TvCheckbox
                   checked={
                     drawing.type === 'hline' || drawing.type === 'hray' || drawing.type === 'crossline'
                       ? drawing.showPriceLabels !== false
                       : Boolean(drawing.showPriceLabels)
                   }
-                  onChange={(e) => patch({ showPriceLabels: e.target.checked })}
-                  className="w-4 h-4 accent-[#131722] dark:accent-[var(--accent)] rounded"
+                  onChange={(checked) => patch({ showPriceLabels: checked })}
+                  label={
+                    drawing.type === 'hline' || drawing.type === 'hray'
+                      ? 'Price label'
+                      : 'Price labels'
+                  }
                 />
-                <span className="text-[var(--text-main)]">
-                  {drawing.type === 'hline' || drawing.type === 'hray'
-                    ? 'Price label'
-                    : 'Price labels'}
-                </span>
-              </label>
+              </div>
 
               {/* INFO STATS SECTION */}
               {isLineLike && (
-                <div className="pt-2 border-t border-[var(--border)] space-y-3">
-                  <div className="text-[11px] font-bold tracking-wider text-[var(--text-muted)]">
+                <div className="pt-2.5 border-t border-[var(--border)] space-y-3">
+                  <div className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
                     INFO
                   </div>
 
@@ -651,7 +1226,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         drawing.statsMode || (drawing.type === 'infoline' ? 'all' : 'hidden')
                       }
                       onChange={(e) => patch({ statsMode: e.target.value as StatsDisplayMode })}
-                      className="w-48 h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none cursor-pointer"
+                      className={`${selectCls} w-48`}
                     >
                       <option value="hidden" className="bg-[var(--bg-surface)]">
                         Hidden
@@ -676,7 +1251,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                     <select
                       value={drawing.statsPosition || 'right'}
                       onChange={(e) => patch({ statsPosition: e.target.value as StatsPosition })}
-                      className="w-48 h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none cursor-pointer"
+                      className={`${selectCls} w-48`}
                     >
                       <option value="left" className="bg-[var(--bg-surface)]">
                         Left
@@ -690,47 +1265,48 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                     </select>
                   </div>
 
-                  <label className="flex items-center gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
+                  <div>
+                    <TvCheckbox
                       checked={
                         drawing.type === 'infoline'
                           ? drawing.alwaysShowStats !== false
                           : Boolean(drawing.alwaysShowStats)
                       }
-                      onChange={(e) => patch({ alwaysShowStats: e.target.checked })}
-                      className="w-4 h-4 accent-[#131722] dark:accent-[var(--accent)] rounded"
+                      onChange={(checked) => patch({ alwaysShowStats: checked })}
+                      label="Always show stats"
                     />
-                    <span className="text-[var(--text-main)]">Always show stats</span>
-                  </label>
+                  </div>
                 </div>
               )}
             </>
           )}
 
-          {/* ===== TAB 2: TEXT ===== */}
-          {tab === 'text' && (
+          {/* ===== TEXT TAB (Non-Position Tools) ===== */}
+          {tab === 'text' && !isPositionTool && (
             <div className="space-y-3.5">
               <div className="flex items-center gap-2">
                 {/* Text Color Picker */}
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setTextColorPickerOpen((v) => !v)}
-                    className="w-8 h-8 rounded-md border border-[var(--border)] bg-[var(--bg-app)] flex items-center justify-center cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActivePopover((p) => (p === 'text' ? 'none' : 'text'));
+                    }}
+                    className="w-[34px] h-[34px] rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] hover:border-[var(--text-muted)] p-[4px] flex items-center justify-center cursor-pointer"
                     title="Text Color"
                   >
                     <span
-                      className="w-5 h-5 rounded"
+                      className="w-full h-full rounded-[4px] border border-black/10 block"
                       style={{ backgroundColor: drawing.textColor || drawing.color || '#2962ff' }}
                     />
                   </button>
-                  {textColorPickerOpen && (
+                  {activePopover === 'text' && (
                     <ColorPalettePopover
                       align="left"
                       value={drawing.textColor || drawing.color || '#2962ff'}
                       onChange={(c) => patch({ textColor: c })}
-                      onClose={() => setTextColorPickerOpen(false)}
+                      onClose={() => setActivePopover('none')}
                     />
                   )}
                 </div>
@@ -739,7 +1315,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 <select
                   value={drawing.fontSize || (drawing.type === 'hline' ? 12 : 14)}
                   onChange={(e) => patch({ fontSize: parseInt(e.target.value, 10) })}
-                  className="h-8 w-20 px-2 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs font-mono-num outline-none cursor-pointer"
+                  className={`${selectCls} w-[92px] font-mono-num`}
                 >
                   {FONT_SIZES.map((sz) => (
                     <option key={sz} value={sz} className="bg-[var(--bg-surface)]">
@@ -752,10 +1328,10 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => patch({ fontBold: !drawing.fontBold })}
-                  className={`w-8 h-8 rounded-md border font-bold text-sm cursor-pointer ${
+                  className={`w-[34px] h-[34px] rounded-[6px] border font-bold text-sm cursor-pointer ${
                     drawing.fontBold
                       ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
-                      : 'border-[var(--border)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                      : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
                   B
@@ -765,10 +1341,10 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => patch({ fontItalic: !drawing.fontItalic })}
-                  className={`w-8 h-8 rounded-md border italic font-serif text-sm cursor-pointer ${
+                  className={`w-[34px] h-[34px] rounded-[6px] border italic font-serif text-sm cursor-pointer ${
                     drawing.fontItalic
                       ? 'border-[var(--accent)] bg-[var(--bg-active)] text-[var(--accent)]'
-                      : 'border-[var(--border)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                      : 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
                   I
@@ -780,7 +1356,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 value={drawing.text || ''}
                 onChange={(e) => patch({ text: e.target.value })}
                 placeholder="Add text"
-                className="w-full p-2.5 rounded-lg border border-[var(--border)] focus:border-[var(--accent)] bg-[var(--bg-app)] text-[var(--text-main)] text-sm outline-none resize-none"
+                className="w-full p-2.5 rounded-[8px] border border-[var(--border)] focus:border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13.5px] outline-none resize-none"
               />
 
               <div className="flex items-center justify-between gap-2">
@@ -794,7 +1370,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         : 'top')
                     }
                     onChange={(e) => patch({ textAlignV: e.target.value as TextAlignV })}
-                    className="h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none cursor-pointer"
+                    className={`${selectCls} w-[104px]`}
                   >
                     <option value="top" className="bg-[var(--bg-surface)]">
                       Top
@@ -809,7 +1385,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                   <select
                     value={drawing.textAlignH || 'center'}
                     onChange={(e) => patch({ textAlignH: e.target.value as TextAlignH })}
-                    className="h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none cursor-pointer"
+                    className={`${selectCls} w-[104px]`}
                   >
                     <option value="left" className="bg-[var(--bg-surface)]">
                       Left
@@ -826,8 +1402,8 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
             </div>
           )}
 
-          {/* ===== TAB 3: COORDINATES ===== */}
-          {tab === 'coordinates' && (
+          {/* ===== COORDINATES TAB (Non-Position Tools) ===== */}
+          {tab === 'coordinates' && !isPositionTool && (
             <div className="space-y-3">
               {drawing.price !== undefined && (
                 <div className="grid grid-cols-[120px_1fr] items-center gap-3">
@@ -840,7 +1416,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                       const v = parseFloat(e.target.value);
                       if (!Number.isNaN(v)) patch({ price: v });
                     }}
-                    className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                 </div>
               )}
@@ -856,7 +1432,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                       const v = parseInt(e.target.value, 10);
                       if (!Number.isNaN(v)) patch({ time: barIndexToTime(v) });
                     }}
-                    className="h-9 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                 </div>
               )}
@@ -874,7 +1450,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         patch({ p1: { ...drawing.p1, price: v } });
                       }
                     }}
-                    className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                   <input
                     type="number"
@@ -886,7 +1462,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         patch({ p1: { ...drawing.p1, time: barIndexToTime(v) } });
                       }
                     }}
-                    className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                 </div>
               )}
@@ -904,7 +1480,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         patch({ p2: { ...drawing.p2, price: v } });
                       }
                     }}
-                    className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                   <input
                     type="number"
@@ -916,7 +1492,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         patch({ p2: { ...drawing.p2, time: barIndexToTime(v) } });
                       }
                     }}
-                    className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                 </div>
               )}
@@ -934,7 +1510,7 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         patch({ p3: { ...drawing.p3, price: v } });
                       }
                     }}
-                    className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                   <input
                     type="number"
@@ -946,56 +1522,23 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                         patch({ p3: { ...drawing.p3, time: barIndexToTime(v) } });
                       }
                     }}
-                    className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]"
+                    className={`${inputCls} w-full`}
                   />
                 </div>
-              )}
-
-              {(drawing.type === 'long_pos' || drawing.type === 'short_pos') && (
-                <>
-                  <div className="grid grid-cols-[120px_1fr] items-center gap-2.5">
-                    <span className="text-[var(--up)] font-medium">Profit target</span>
-                    <input
-                      type="number"
-                      step="any"
-                      value={Number((drawing.targetPrice || 0).toFixed(6))}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!Number.isNaN(v)) patch({ targetPrice: v });
-                      }}
-                      className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--up)]"
-                    />
-                  </div>
-                  <div className="grid grid-cols-[120px_1fr] items-center gap-2.5">
-                    <span className="text-[var(--down)] font-medium">Stop loss</span>
-                    <input
-                      type="number"
-                      step="any"
-                      value={Number((drawing.stopPrice || 0).toFixed(6))}
-                      onChange={(e) => {
-                        const v = parseFloat(e.target.value);
-                        if (!Number.isNaN(v)) patch({ stopPrice: v });
-                      }}
-                      className="h-9 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--down)]"
-                    />
-                  </div>
-                </>
               )}
             </div>
           )}
 
-          {/* ===== TAB 4: VISIBILITY ===== */}
+          {/* ===== VISIBILITY TAB (Shared across ALL tools — matches Screenshot 4) ===== */}
           {tab === 'visibility' && (
-            <div className="space-y-2.5">
-              <label className="flex items-center gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
+            <div className="space-y-3">
+              <div>
+                <TvCheckbox
                   checked={visibility.ticks}
-                  onChange={(e) => patchVisibility({ ticks: e.target.checked })}
-                  className="w-4 h-4 accent-[#131722] dark:accent-[var(--accent)]"
+                  onChange={(checked) => patchVisibility({ ticks: checked })}
+                  label="Ticks"
                 />
-                <span className="text-[var(--text-main)]">Ticks</span>
-              </label>
+              </div>
 
               {(
                 [
@@ -1011,19 +1554,15 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 return (
                   <div
                     key={row.key}
-                    className="grid grid-cols-[95px_64px_1fr_64px] items-center gap-2"
+                    className="grid grid-cols-[96px_66px_1fr_66px] items-center gap-2"
                   >
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={rng.enabled}
-                        onChange={(e) =>
-                          patchVisibility({ [row.key]: { ...rng, enabled: e.target.checked } })
-                        }
-                        className="w-4 h-4 accent-[#131722] dark:accent-[var(--accent)]"
-                      />
-                      <span className="text-[var(--text-main)] text-xs">{row.label}</span>
-                    </label>
+                    <TvCheckbox
+                      checked={rng.enabled}
+                      onChange={(checked) =>
+                        patchVisibility({ [row.key]: { ...rng, enabled: checked } })
+                      }
+                      label={row.label}
+                    />
 
                     <input
                       type="number"
@@ -1039,10 +1578,9 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                           },
                         })
                       }
-                      className="h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs disabled:opacity-40"
+                      className="h-[32px] px-2 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[12.5px] outline-none focus:border-[var(--accent)] disabled:opacity-40"
                     />
 
-                    {/* Interactive Dual-Thumb Range Slider (matches TradingView Visibility tab) */}
                     <VisibilityDualSlider
                       minLimit={1}
                       maxLimit={row.maxLimit}
@@ -1073,40 +1611,43 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                           },
                         })
                       }
-                      className="h-7 px-2 rounded border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs disabled:opacity-40"
+                      className="h-[32px] px-2 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[12.5px] outline-none focus:border-[var(--accent)] disabled:opacity-40"
                     />
                   </div>
                 );
               })}
 
-              <label className="flex items-center gap-2.5 pt-1 cursor-pointer">
-                <input
-                  type="checkbox"
+              <div className="pt-0.5">
+                <TvCheckbox
                   checked={visibility.ranges}
-                  onChange={(e) => patchVisibility({ ranges: e.target.checked })}
-                  className="w-4 h-4 accent-[#131722] dark:accent-[var(--accent)]"
+                  onChange={(checked) => patchVisibility({ ranges: checked })}
+                  label="Ranges"
                 />
-                <span className="text-[var(--text-main)]">Ranges</span>
-              </label>
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer: Template ⌄ | Cancel | Ok */}
-        <div className="px-5 py-3.5 border-t border-[var(--border)] flex items-center justify-between gap-2 bg-[var(--bg-elevated)] rounded-b-xl">
-          {/* Template Dropdown */}
+        <div className="px-5 py-3.5 border-t border-[var(--border)] flex items-center justify-between gap-2 bg-[var(--bg-surface)] rounded-b-[12px]">
           <div className="relative">
             <button
               type="button"
-              onClick={() => setTemplateMenuOpen((v) => !v)}
-              className="h-8 px-3 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-xs font-medium text-[var(--text-main)] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1.5 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                setTemplateMenuOpen((v) => !v);
+              }}
+              className="h-[34px] px-3 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[13px] font-medium text-[var(--text-main)] hover:bg-[var(--bg-hover)] inline-flex items-center gap-1.5 cursor-pointer"
             >
               <span>Template</span>
               <ChevronDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
             </button>
 
             {templateMenuOpen && (
-              <div className="absolute left-0 bottom-10 w-56 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-40 text-xs">
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute left-0 bottom-10 w-56 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1.5 z-40 text-xs"
+              >
                 {showSaveTplInput ? (
                   <form onSubmit={handleCreateTemplate} className="px-2 py-1 flex items-center gap-1">
                     <input
@@ -1137,19 +1678,43 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    patch({
-                      color: '#2962ff',
-                      lineWidth: 2,
-                      lineStyle: 'solid',
-                      extend: 'none',
-                      leftEnd: 'normal',
-                      rightEnd: 'normal',
-                      showMiddlePoint: false,
-                      showPriceLabels: false,
-                      statsMode: 'hidden',
-                      alwaysShowStats: false,
-                      visibility: DEFAULT_VISIBILITY,
-                    });
+                    if (isPositionTool) {
+                      patch({
+                        color: '#787b86',
+                        lineWidth: 1,
+                        lineStyle: 'solid',
+                        stopColor: 'rgba(242, 54, 69, 0.2)',
+                        targetColor: 'rgba(8, 153, 129, 0.2)',
+                        textColor: '#ffffff',
+                        fontSize: 12,
+                        accountSize: 1000,
+                        accountCurrency: 'Default',
+                        lotSize: 1,
+                        risk: 25,
+                        riskUnit: '%',
+                        leverage: 10000,
+                        qtyPrecision: 'Default',
+                        showPriceLabels: true,
+                        statsMode: 'all',
+                        compactStatsMode: false,
+                        alwaysShowStats: false,
+                        visibility: DEFAULT_VISIBILITY,
+                      });
+                    } else {
+                      patch({
+                        color: '#2962ff',
+                        lineWidth: 2,
+                        lineStyle: 'solid',
+                        extend: 'none',
+                        leftEnd: 'normal',
+                        rightEnd: 'normal',
+                        showMiddlePoint: false,
+                        showPriceLabels: drawing.type === 'hline' || drawing.type === 'hray',
+                        statsMode: 'hidden',
+                        alwaysShowStats: false,
+                        visibility: DEFAULT_VISIBILITY,
+                      });
+                    }
                     setTemplateMenuOpen(false);
                   }}
                   className="w-full px-3 py-1.5 text-left hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
@@ -1194,14 +1759,14 @@ export const DrawingSettingsModal: React.FC<DrawingSettingsModalProps> = ({
             <button
               type="button"
               onClick={handleCancel}
-              className="h-8 px-4 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-xs font-semibold text-[var(--text-main)] hover:bg-[var(--bg-hover)] cursor-pointer"
+              className="h-[34px] px-4 rounded-[8px] border border-[#131722] dark:border-[var(--border)] bg-[var(--bg-surface)] text-[13px] font-medium text-[var(--text-main)] hover:bg-[var(--bg-hover)] cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="h-8 px-5 rounded-md bg-[#131722] dark:bg-[var(--accent)] text-white text-xs font-semibold hover:opacity-90 cursor-pointer"
+              className="h-[34px] px-5 rounded-[8px] bg-[#131722] dark:bg-white text-white dark:text-[#131722] text-[13px] font-semibold hover:opacity-90 cursor-pointer"
             >
               Ok
             </button>

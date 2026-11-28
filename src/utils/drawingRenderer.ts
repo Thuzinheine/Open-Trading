@@ -16,6 +16,15 @@ export interface CoordBridge {
   plotLeft?: number;
   plotWidth?: number;
   intervalSec: number;
+  lastClose?: number;
+}
+
+export function getTickSizeForPrice(price: number): number {
+  const abs = Math.abs(price);
+  if (abs >= 100) return 0.01;
+  if (abs >= 1) return 0.0001;
+  if (abs >= 0.01) return 0.00001;
+  return 0.00000001;
 }
 
 function getHlineHandleX(bridge: CoordBridge): number {
@@ -466,15 +475,17 @@ export function getDrawingHandles(s: DrawingObject, bridge: CoordBridge): Handle
     if (s.p1 && s.p2) {
       const a = bridge.ptToScreen(s.p1);
       const b = bridge.ptToScreen(s.p2);
-      if (a) handles.push({ drawingId: s.id, handleKey: 'p1', x: a.x, y: a.y });
-      if (a && b) handles.push({ drawingId: s.id, handleKey: 'p2', x: b.x, y: a.y });
+      const x1 = a && b ? Math.min(a.x, b.x) : a?.x ?? 0;
+      const x2 = a && b ? Math.max(a.x, b.x, x1 + 60) : (b?.x ?? 0);
+      if (a) handles.push({ drawingId: s.id, handleKey: 'p1', x: x1, y: a.y });
+      if (a && b) handles.push({ drawingId: s.id, handleKey: 'p2', x: x2, y: a.y });
       if (a && s.targetPrice !== undefined) {
         const ty = bridge.priceToY(s.targetPrice);
-        if (ty !== null) handles.push({ drawingId: s.id, handleKey: 'target', x: a.x, y: ty });
+        if (ty !== null) handles.push({ drawingId: s.id, handleKey: 'target', x: x1, y: ty });
       }
       if (a && s.stopPrice !== undefined) {
         const sy = bridge.priceToY(s.stopPrice);
-        if (sy !== null) handles.push({ drawingId: s.id, handleKey: 'stop', x: a.x, y: sy });
+        if (sy !== null) handles.push({ drawingId: s.id, handleKey: 'stop', x: x1, y: sy });
       }
     }
     return handles;
@@ -1174,59 +1185,179 @@ export function renderDrawingObject(
       if (ty === null || sy === null) break;
 
       const x1 = Math.min(a.x, b.x);
-      const x2 = Math.max(a.x, b.x, x1 + 95);
+      const x2 = Math.max(a.x, b.x, x1 + 60);
       const boxW = x2 - x1;
 
-      ctx.fillStyle = 'rgba(8, 153, 129, 0.22)';
+      const targetFill = s.targetColor || 'rgba(8, 153, 129, 0.2)';
+      const stopFill = s.stopColor || 'rgba(242, 54, 69, 0.2)';
+      const lineCol = s.color || '#787b86';
+
+      // Clean translucent Target & Stop zones (no heavy box borders — matches TradingView!)
+      ctx.fillStyle = targetFill;
       ctx.fillRect(x1, Math.min(a.y, ty), boxW, Math.abs(ty - a.y));
-      ctx.strokeStyle = '#089981';
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(x1, Math.min(a.y, ty), boxW, Math.abs(ty - a.y));
 
-      ctx.fillStyle = 'rgba(242, 54, 69, 0.22)';
+      // Subtle outer target accent hairline
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = hexWithOpacity(targetFill, 1).replace(/,\s*[\d.]+\)$/, ', 0.45)');
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x1, ty);
+      ctx.lineTo(x2, ty);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.fillStyle = stopFill;
       ctx.fillRect(x1, Math.min(a.y, sy), boxW, Math.abs(sy - a.y));
-      ctx.strokeStyle = '#f23645';
-      ctx.strokeRect(x1, Math.min(a.y, sy), boxW, Math.abs(sy - a.y));
 
-      ctx.strokeStyle = '#787b86';
-      ctx.lineWidth = 1.5;
+      // Crisp Entry divider line
+      ctx.save();
+      ctx.strokeStyle = lineCol;
+      ctx.lineWidth = s.lineWidth || 1;
+      applyLineDash(ctx, s.lineStyle);
       ctx.beginPath();
       ctx.moveTo(x1, a.y);
       ctx.lineTo(x2, a.y);
       ctx.stroke();
+      ctx.restore();
 
-      const reward = Math.abs(target - entry);
-      const risk = Math.abs(entry - stop);
-      const rr = risk > 0 ? reward / risk : 0;
-      const tpPct = entry ? (reward / entry) * 100 : 0;
-      const slPct = entry ? (risk / entry) * 100 : 0;
+      // Stats pills: ONLY show when selected, hovered, or Always Show Stats is enabled (and statsMode !== 'hidden')
+      const statsMode = s.statsMode || 'all';
+      const showStats = statsMode !== 'hidden' && (showHandles || Boolean(s.alwaysShowStats));
 
-      ctx.font = '600 10px "JetBrains Mono", monospace';
-      ctx.textAlign = 'center';
-      const cx = x1 + boxW / 2;
+      if (showStats) {
+        const reward = Math.abs(target - entry);
+        const riskDist = Math.abs(entry - stop);
+        const rr = riskDist > 0 ? reward / riskDist : 0;
+        const tpPct = entry > 0 ? (reward / entry) * 100 : 0;
+        const slPct = entry > 0 ? (riskDist / entry) * 100 : 0;
+        const tickSize = getTickSizeForPrice(entry);
+        const tpTicks = Math.round(reward / tickSize);
+        const slTicks = Math.round(riskDist / tickSize);
 
-      ctx.fillStyle = '#089981';
-      ctx.fillRect(x1, ty - (isLong ? 16 : 0), boxW, 16);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(`Target ${fmtPrice(target)} (+${tpPct.toFixed(2)}%)`, cx, ty - (isLong ? 5 : -11));
+        const accountSize = s.accountSize ?? 1000;
+        const lotSize = Math.max(0.000001, s.lotSize ?? 1);
+        const riskInput = s.risk ?? 25;
+        const riskUnit = s.riskUnit ?? '%';
+        const riskMoney = riskUnit === '%' ? accountSize * (riskInput / 100) : riskInput;
+        const rawQty = riskDist > 0 ? riskMoney / (riskDist * lotSize) : 0;
 
-      ctx.fillStyle = '#f23645';
-      ctx.fillRect(x1, sy + (isLong ? 0 : -16), boxW, 16);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(`Stop ${fmtPrice(stop)} (-${slPct.toFixed(2)}%)`, cx, sy + (isLong ? 11 : -5));
+        let qtyStr: string;
+        if (s.qtyPrecision && s.qtyPrecision !== 'Default') {
+          const dp = parseInt(s.qtyPrecision, 10);
+          qtyStr = Number.isFinite(dp) ? rawQty.toFixed(dp) : rawQty.toFixed(3);
+        } else {
+          qtyStr =
+            rawQty >= 1000
+              ? rawQty.toFixed(0)
+              : rawQty >= 10
+              ? rawQty.toFixed(2)
+              : rawQty.toFixed(3);
+        }
 
-      const rrTxt = `R:R ${rr.toFixed(2)}`;
-      const rw = ctx.measureText(rrTxt).width + 12;
-      ctx.fillStyle = '#131722';
-      ctx.fillRect(cx - rw / 2, a.y - 9, rw, 18);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(rrTxt, cx, a.y + 3.5);
+        const targetAmount = accountSize + rawQty * reward * lotSize;
+        const stopAmount = accountSize - rawQty * riskDist * lotSize;
+        const liveClose = bridge.lastClose ?? entry;
+        const openPnl = (isLong ? liveClose - entry : entry - liveClose) * rawQty * lotSize;
+
+        const fmtAmt = (n: number) =>
+          Math.abs(n) >= 1000
+            ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : Number(n.toFixed(2)).toString();
+        const fmtPnl = (n: number) => {
+          const absFmt = Math.abs(n).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          });
+          return n < 0 ? `−${absFmt}` : absFmt;
+        };
+
+        const fontSize = s.fontSize || 12;
+        const textCol = s.textColor || '#ffffff';
+        const compact = Boolean(s.compactStatsMode);
+        const cx = x1 + boxW / 2;
+
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.font = `600 ${fontSize}px -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        const pillH = Math.round(fontSize * 1.85);
+        const padX = compact ? 8 : 10;
+
+        const drawPill = (label: string, centerX: number, topY: number, bg: string) => {
+          const tw = ctx.measureText(label).width + padX * 2;
+          const clampedX = Math.max(6, Math.min(width - tw - 6, centerX - tw / 2));
+          ctx.fillStyle = bg;
+          drawRoundedRect(ctx, clampedX, topY, tw, pillH, 4);
+          ctx.fill();
+          ctx.fillStyle = textCol;
+          ctx.fillText(label, clampedX + tw / 2, topY + pillH / 2 + 0.5);
+        };
+
+        // 1. Target Pill (above Target zone for Long, below Target zone for Short)
+        if (statsMode === 'all' || statsMode === 'price') {
+          const tpLabel = compact
+            ? `Target: ${fmtPrice(reward)} (${tpPct.toFixed(2)}%)`
+            : `Target: ${fmtPrice(reward)} (${tpPct.toFixed(3)}%) ${tpTicks.toLocaleString('en-US')}, Amount: ${fmtAmt(targetAmount)}`;
+          const tpPillY = isLong ? ty - pillH - 12 : ty + 12;
+          drawPill(tpLabel, cx, tpPillY, '#089981');
+        }
+
+        // 2. Stop Pill (below Stop zone for Long, above Stop zone for Short)
+        if (statsMode === 'all' || statsMode === 'price') {
+          const slLabel = compact
+            ? `Stop: ${fmtPrice(riskDist)} (${slPct.toFixed(2)}%)`
+            : `Stop: ${fmtPrice(riskDist)} (${slPct.toFixed(3)}%) ${slTicks.toLocaleString('en-US')}, Amount: ${fmtAmt(stopAmount)}`;
+          const slPillY = isLong ? sy + 12 : sy - pillH - 12;
+          drawPill(slLabel, cx, slPillY, '#f23645');
+        }
+
+        // 3. Center Open PnL & Risk/Reward Pill (centered above entry line for Long, below for Short)
+        if (statsMode === 'all' || statsMode === 'percent') {
+          const pnlBg = openPnl >= 0 ? '#089981' : '#f23645';
+          if (compact) {
+            const cLabel = `R/R: ${rr.toFixed(2)}, Qty: ${qtyStr}`;
+            const cTop = isLong ? a.y - pillH - 8 : a.y + 8;
+            drawPill(cLabel, cx, cTop, pnlBg);
+          } else {
+            const line1 = `Open PnL: ${fmtPnl(openPnl)}, Qty: ${qtyStr}`;
+            const line2 = `Risk/reward ratio: ${rr.toFixed(2)}`;
+            const lineH = Math.round(fontSize * 1.38);
+            const tw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 18;
+            const th = lineH * 2 + 10;
+            const clampedX = Math.max(6, Math.min(width - tw - 6, cx - tw / 2));
+            const boxTop = isLong ? a.y - th - 10 : a.y + 10;
+            ctx.fillStyle = pnlBg;
+            drawRoundedRect(ctx, clampedX, boxTop, tw, th, 5);
+            ctx.fill();
+            ctx.fillStyle = textCol;
+            ctx.fillText(line1, clampedX + tw / 2, boxTop + 5 + lineH * 0.5);
+            ctx.fillText(line2, clampedX + tw / 2, boxTop + 5 + lineH * 1.5);
+          }
+        }
+
+        ctx.restore();
+      }
 
       if (showHandles) {
-        drawHandleDot(ctx, a.x, a.y, isSelected);
-        drawHandleDot(ctx, x2, a.y, isSelected);
-        drawHandleDot(ctx, a.x, ty, isSelected);
-        drawHandleDot(ctx, a.x, sy, isSelected);
+        // TradingView crisp blue-ringed white rounded-square handles at the 4 corners/anchors
+        const drawPosHandle = (hx: number, hy: number) => {
+          ctx.save();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#2962ff';
+          ctx.lineWidth = isSelected ? 2 : 1.7;
+          drawRoundedRect(ctx, hx - 4.5, hy - 4.5, 9, 9, 2.5);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        };
+        drawPosHandle(x1, ty);
+        drawPosHandle(x1, a.y);
+        drawPosHandle(x2, a.y);
+        drawPosHandle(x1, sy);
       }
       break;
     }

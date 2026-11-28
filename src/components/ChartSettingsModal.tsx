@@ -139,6 +139,32 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
   const [showSaveTpl, setShowSaveTpl] = useState(false);
   const [tplName, setTplName] = useState('');
+  const [modalOffset, setModalOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      setModalOffset({
+        x: dragRef.current.origX + (e.clientX - dragRef.current.startX),
+        y: dragRef.current.origY + (e.clientY - dragRef.current.startY),
+      });
+    };
+    const onUp = () => {
+      dragRef.current = null;
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, []);
 
   useEffect(() => {
     if (open) {
@@ -148,6 +174,7 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
       setTemplateMenuOpen(false);
       setShowSaveTpl(false);
       setTplName('');
+      setModalOffset({ x: 0, y: 0 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialTab]);
@@ -193,31 +220,41 @@ export const ChartSettingsModal: React.FC<ChartSettingsModalProps> = ({
 
   const chkClass = 'w-4 h-4 rounded accent-[#131722] dark:accent-[var(--accent)] cursor-pointer shrink-0';
   const selClass =
-    'h-8 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] text-xs outline-none focus:border-[var(--accent)] cursor-pointer';
+    'tv-select h-[34px] px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] text-[13px] outline-none focus:border-[var(--accent)] cursor-pointer';
   const numClass =
-    'h-8 w-24 px-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-app)] text-[var(--text-main)] font-mono-num text-xs outline-none focus:border-[var(--accent)]';
+    'h-[34px] w-24 px-2.5 rounded-[6px] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-main)] font-mono-num text-[13px] outline-none focus:border-[var(--accent)]';
 
   return (
-    <div
-      className="fixed inset-0 bg-black/45 z-50 flex items-center justify-center px-4 select-none"
-      onClick={handleCancel}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 select-none pointer-events-none">
       <div
-        className="w-full max-w-[660px] h-[560px] max-h-[88vh] bg-[var(--bg-surface)] border border-[var(--border)] rounded-xl shadow-2xl flex flex-col overflow-hidden"
+        style={{ transform: `translate3d(${modalOffset.x}px, ${modalOffset.y}px, 0)` }}
+        className="pointer-events-auto w-full max-w-[660px] h-[560px] max-h-[88vh] bg-[var(--bg-surface)] border border-[var(--border)] rounded-[12px] shadow-[0_12px_40px_rgba(0,0,0,0.22)] flex flex-col overflow-hidden"
         onClick={(e) => {
           e.stopPropagation();
           if (openPickerId) setOpenPickerId(null);
         }}
       >
-        {/* Header */}
-        <div className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
-          <h2 className="text-[17px] font-bold text-[var(--text-main)]">Settings</h2>
+        {/* Freely Draggable Header */}
+        <div
+          onMouseDown={(e) => {
+            if ((e.target as HTMLElement).closest('button, input')) return;
+            dragRef.current = {
+              startX: e.clientX,
+              startY: e.clientY,
+              origX: modalOffset.x,
+              origY: modalOffset.y,
+            };
+          }}
+          title="Drag to move anywhere on chart"
+          className="px-5 py-3.5 border-b border-[var(--border)] flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing"
+        >
+          <h2 className="text-[18px] font-bold text-[var(--text-main)]">Settings</h2>
           <button
             type="button"
             onClick={handleCancel}
-            className="p-1 rounded hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
+            className="w-8 h-8 rounded-md inline-flex items-center justify-center hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-main)] cursor-pointer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-[18px] h-[18px]" strokeWidth={1.6} />
           </button>
         </div>
 

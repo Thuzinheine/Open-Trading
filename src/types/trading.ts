@@ -266,6 +266,17 @@ export interface DrawingObject {
   points?: AnchorPoint[]; // brush, highlighter, path
   stopPrice?: number; // long_pos, short_pos
   targetPrice?: number; // long_pos, short_pos
+  // Long / Short position inputs & styling
+  accountSize?: number;
+  accountCurrency?: string;
+  lotSize?: number;
+  risk?: number;
+  riskUnit?: '%' | 'currency';
+  leverage?: number;
+  qtyPrecision?: string;
+  stopColor?: string;
+  targetColor?: string;
+  compactStatsMode?: boolean;
   // Timeframe visibility
   visibility?: DrawingVisibility;
 }

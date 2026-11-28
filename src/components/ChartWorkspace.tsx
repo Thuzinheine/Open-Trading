@@ -49,6 +49,7 @@ import {
   AlarmClockPlus,
   Layers,
   ChevronRight,
+  PaintBucket,
 } from 'lucide-react';
 import { HexSettingsIcon } from './TradingViewIcons';
 import {
@@ -378,7 +379,15 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
     const [hoverCursor, setHoverCursor] = useState<string>('');
     const [drawingHint, setDrawingHint] = useState<string | null>(null);
     const [toolbarMenu, setToolbarMenu] = useState<
-      'none' | 'template' | 'lineColor' | 'textColor' | 'lineWidth' | 'lineStyle' | 'more'
+      | 'none'
+      | 'template'
+      | 'lineColor'
+      | 'textColor'
+      | 'targetColor'
+      | 'stopColor'
+      | 'lineWidth'
+      | 'lineStyle'
+      | 'more'
     >('none');
     const [toolbarOffset, setToolbarOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
     const toolbarDragRef = useRef<{
@@ -569,6 +578,7 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         plotLeft,
         plotWidth,
         intervalSec: INTERVAL_SECONDS[intervalRef.current] || 86400,
+        lastClose: displayCandlesRef.current[displayCandlesRef.current.length - 1]?.close,
       };
     }, [timeToLogical]);
 
@@ -1030,33 +1040,38 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         }
       }
 
-      // 2b. Horizontal Line & Horizontal Ray price badges on the Price Scale (matches TradingView!)
+      // 2b. Horizontal Line, Horizontal Ray & Long/Short Position price badges on the Price Scale (matches TradingView!)
       if (!drawingsHiddenRef.current) {
         const activeDrawings = drawingsRef.current.filter((d) =>
           isDrawingVisibleOnTimeframe(d, intervalRef.current)
         );
-        for (const d of activeDrawings) {
-          if (d.showPriceLabels === false) continue;
-          let linePrice: number | undefined;
-          if (d.type === 'hline' && d.price !== undefined) {
-            linePrice = d.price;
-          } else if (d.type === 'hray' && d.p1) {
-            linePrice = d.p1.price;
-          }
-          if (linePrice === undefined || !Number.isFinite(linePrice)) continue;
-          const y = series.priceToCoordinate(linePrice);
-          if (y === null || !Number.isFinite(Number(y))) continue;
+        const pushDrawingPrice = (id: string, price: number | undefined, bgColor: string) => {
+          if (price === undefined || !Number.isFinite(price)) return;
+          const y = series.priceToCoordinate(price);
+          if (y === null || !Number.isFinite(Number(y))) return;
           const iy = Number(y);
-          if (iy < -24 || iy > maxBottom + 24) continue;
+          if (iy < -24 || iy > maxBottom + 24) return;
           indRaw.push({
-            id: `drawing_${d.id}`,
+            id,
             kind: 'indicator',
-            text: fmtPrice(linePrice, prec),
-            bgColor: d.color || '#2962ff',
+            text: fmtPrice(price, prec),
+            bgColor,
             idealY: iy,
             top: Math.max(2, Math.min(maxBottom - pillH, Math.round(iy - halfPill))),
             height: pillH,
           });
+        };
+        for (const d of activeDrawings) {
+          if (d.showPriceLabels === false) continue;
+          if (d.type === 'hline' && d.price !== undefined) {
+            pushDrawingPrice(`drawing_${d.id}`, d.price, d.color || '#2962ff');
+          } else if (d.type === 'hray' && d.p1) {
+            pushDrawingPrice(`drawing_${d.id}`, d.p1.price, d.color || '#2962ff');
+          } else if ((d.type === 'long_pos' || d.type === 'short_pos') && d.p1) {
+            pushDrawingPrice(`drawing_${d.id}_tp`, d.targetPrice, '#089981');
+            pushDrawingPrice(`drawing_${d.id}_entry`, d.p1.price, d.color || '#787b86');
+            pushDrawingPrice(`drawing_${d.id}_sl`, d.stopPrice, '#f23645');
+          }
         }
       }
 
@@ -2955,9 +2970,18 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         onUpdateDrawing(drawingId, () => {
           const clone: DrawingObject = JSON.parse(JSON.stringify(origDrawing));
           if (handleKey === 'p1' && clone.p1) {
-            clone.p1 = pt;
+            if ((clone.type === 'long_pos' || clone.type === 'short_pos') && clone.p2) {
+              clone.p1 = pt;
+              clone.p2 = { ...clone.p2, price: pt.price };
+            } else {
+              clone.p1 = pt;
+            }
           } else if (handleKey === 'p2' && clone.p2) {
-            clone.p2 = pt;
+            if ((clone.type === 'long_pos' || clone.type === 'short_pos') && clone.p1) {
+              clone.p2 = { time: pt.time, price: clone.p1.price };
+            } else {
+              clone.p2 = pt;
+            }
           } else if (handleKey === 'p3' && clone.p3) {
             clone.p3 = pt;
           } else if (handleKey === 'price') {
@@ -2965,9 +2989,23 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           } else if (handleKey === 'time') {
             clone.time = pt.time;
           } else if (handleKey === 'target') {
-            clone.targetPrice = pt.price;
+            if (clone.p1) {
+              clone.targetPrice =
+                clone.type === 'long_pos'
+                  ? Math.max(clone.p1.price, pt.price)
+                  : Math.min(clone.p1.price, pt.price);
+            } else {
+              clone.targetPrice = pt.price;
+            }
           } else if (handleKey === 'stop') {
-            clone.stopPrice = pt.price;
+            if (clone.p1) {
+              clone.stopPrice =
+                clone.type === 'long_pos'
+                  ? Math.min(clone.p1.price, pt.price)
+                  : Math.max(clone.p1.price, pt.price);
+            } else {
+              clone.stopPrice = pt.price;
+            }
           } else {
             // Translate whole drawing!
             if (clone.price !== undefined) clone.price += dp;
@@ -3226,8 +3264,24 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
           finalizeDrawing({
             id,
             type: activeTool,
-            color: isLong ? '#089981' : '#f23645',
-            lineWidth: 1.5,
+            color: '#787b86',
+            lineWidth: 1,
+            lineStyle: 'solid',
+            targetColor: 'rgba(8, 153, 129, 0.2)',
+            stopColor: 'rgba(242, 54, 69, 0.2)',
+            textColor: '#ffffff',
+            fontSize: 12,
+            accountSize: 1000,
+            accountCurrency: 'Default',
+            lotSize: 1,
+            risk: 25,
+            riskUnit: '%',
+            leverage: 10000,
+            qtyPrecision: 'Default',
+            showPriceLabels: true,
+            statsMode: 'all',
+            compactStatsMode: false,
+            alwaysShowStats: false,
             p1: pt,
             p2: { time: pt.time + step * 18, price: pt.price },
             targetPrice: isLong ? pt.price + rewardDist : pt.price - rewardDist,
@@ -3688,7 +3742,11 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
         e.stopPropagation();
         e.preventDefault();
         onSelectDrawingId(hit.drawingId);
-        onOpenDrawingSettings(hit.drawingId, 'style');
+        const hitObj = drawingsRef.current.find((d) => d.id === hit.drawingId);
+        onOpenDrawingSettings(
+          hit.drawingId,
+          hitObj && (hitObj.type === 'long_pos' || hitObj.type === 'short_pos') ? 'inputs' : 'style'
+        );
       }
     };
 
@@ -4712,202 +4770,308 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                   )}
                 </div>
 
-                {/* 3. Line Color Picker */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setToolbarMenu((m) => (m === 'lineColor' ? 'none' : 'lineColor'))
-                    }
-                    title="Line Color"
-                    className={`w-7 h-7 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                      toolbarMenu === 'lineColor'
-                        ? 'bg-[var(--bg-active)] text-[var(--accent)]'
-                        : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
-                    }`}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                    <span
-                      className="w-4 h-[3px] rounded-xs"
-                      style={{ backgroundColor: selectedDrawing.color || '#2962ff' }}
-                    />
-                  </button>
-                  {toolbarMenu === 'lineColor' && (
-                    <ColorPalettePopover
-                      value={selectedDrawing.color || '#2962ff'}
-                      onChange={(col) => {
-                        onSelectDrawColor(col);
-                        onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, color: col }));
-                      }}
-                      onClose={() => setToolbarMenu('none')}
-                    />
-                  )}
-                </div>
-
-                {/* 4. Text Color & Quick Text */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setToolbarMenu((m) => (m === 'textColor' ? 'none' : 'textColor'))
-                    }
-                    title="Text & Text Color"
-                    className={`w-7 h-7 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                      toolbarMenu === 'textColor'
-                        ? 'bg-[var(--bg-active)] text-[var(--accent)]'
-                        : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
-                    }`}
-                  >
-                    <Type className="w-3.5 h-3.5" />
-                    <span
-                      className="w-4 h-[3px] rounded-xs"
-                      style={{
-                        backgroundColor:
-                          selectedDrawing.textColor || selectedDrawing.color || '#2962ff',
-                      }}
-                    />
-                  </button>
-                  {toolbarMenu === 'textColor' && (
-                    <ColorPalettePopover
-                      value={selectedDrawing.textColor || selectedDrawing.color || '#2962ff'}
-                      onChange={(col) => {
-                        onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, textColor: col }));
-                      }}
-                      onClose={() => setToolbarMenu('none')}
-                      extraAction={{
-                        label: selectedDrawing.text ? 'Edit Label Text...' : 'Add Text Label...',
-                        onClick: () => {
-                          setToolbarMenu('none');
-                          onOpenDrawingSettings(selectedDrawing.id, 'text');
-                        },
-                      }}
-                    />
-                  )}
-                </div>
-
-                {/* 5. Line Width Dropdown */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setToolbarMenu((m) => (m === 'lineWidth' ? 'none' : 'lineWidth'))
-                    }
-                    title="Line Width"
-                    className={`h-7 px-2 rounded inline-flex items-center gap-1.5 cursor-pointer ${
-                      toolbarMenu === 'lineWidth'
-                        ? 'bg-[var(--bg-active)] text-[var(--accent)]'
-                        : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
-                    }`}
-                  >
-                    <span
-                      className="w-3.5 rounded-full bg-current"
-                      style={{ height: `${Math.max(1, Math.min(4, Math.round(selectedDrawing.lineWidth || 2)))}px` }}
-                    />
-                    <span className="font-mono-num text-[11px] font-semibold">
-                      {Math.round(selectedDrawing.lineWidth || 2)}px
-                    </span>
-                  </button>
-                  {toolbarMenu === 'lineWidth' && (
-                    <div className="absolute left-0 top-9 w-28 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-40">
-                      {[1, 2, 3, 4].map((w) => (
-                        <button
-                          key={w}
-                          type="button"
-                          onClick={() => {
-                            onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, lineWidth: w }));
-                            setToolbarMenu('none');
-                          }}
-                          className={`w-full px-3 py-1.5 flex items-center justify-between hover:bg-[var(--bg-hover)] cursor-pointer ${
-                            Math.round(selectedDrawing.lineWidth || 2) === w
-                              ? 'text-[var(--accent)] font-bold'
-                              : 'text-[var(--text-main)]'
-                          }`}
-                        >
-                          <span
-                            className="w-10 rounded-full bg-current"
-                            style={{ height: `${w}px` }}
-                          />
-                          <span className="font-mono-num text-[11px]">{w}px</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* 6. Line Style Dropdown */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setToolbarMenu((m) => (m === 'lineStyle' ? 'none' : 'lineStyle'))
-                    }
-                    title="Line Style"
-                    className={`w-8 h-7 rounded inline-flex items-center justify-center cursor-pointer ${
-                      toolbarMenu === 'lineStyle'
-                        ? 'bg-[var(--bg-active)] text-[var(--accent)]'
-                        : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
-                    }`}
-                  >
-                    <svg className="w-5 h-3" viewBox="0 0 24 8">
-                      <line
-                        x1="2"
-                        y1="4"
-                        x2="22"
-                        y2="4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeDasharray={
-                          selectedDrawing.lineStyle === 'dashed'
-                            ? '5 3'
-                            : selectedDrawing.lineStyle === 'dotted'
-                            ? '2 3'
-                            : undefined
+                {/* 3-6. Position Tool vs Standard Tool Styling Controls */}
+                {selectedDrawing.type === 'long_pos' || selectedDrawing.type === 'short_pos' ? (
+                  <>
+                    {/* Text Color */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setToolbarMenu((m) => (m === 'textColor' ? 'none' : 'textColor'))
                         }
-                      />
-                    </svg>
-                  </button>
-                  {toolbarMenu === 'lineStyle' && (
-                    <div className="absolute left-0 top-9 w-32 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-40">
-                      {(
-                        [
-                          { id: 'solid', label: 'Line', dash: undefined },
-                          { id: 'dashed', label: 'Dashed', dash: '5 3' },
-                          { id: 'dotted', label: 'Dotted', dash: '2 3' },
-                        ] as { id: DrawingLineStyle; label: string; dash?: string }[]
-                      ).map((st) => (
-                        <button
-                          key={st.id}
-                          type="button"
-                          onClick={() => {
-                            onUpdateDrawing(selectedDrawing.id, (d) => ({
-                              ...d,
-                              lineStyle: st.id,
-                            }));
-                            setToolbarMenu('none');
+                        title="Text color"
+                        className={`w-7 h-7 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                          toolbarMenu === 'textColor'
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <Type className="w-3.5 h-3.5" />
+                        <span
+                          className="w-4 h-[3px] rounded-xs border border-[var(--border)]"
+                          style={{ backgroundColor: selectedDrawing.textColor || '#ffffff' }}
+                        />
+                      </button>
+                      {toolbarMenu === 'textColor' && (
+                        <ColorPalettePopover
+                          value={selectedDrawing.textColor || '#ffffff'}
+                          onChange={(col) => {
+                            onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, textColor: col }));
                           }}
-                          className={`w-full px-3 py-1.5 flex items-center justify-between hover:bg-[var(--bg-hover)] cursor-pointer ${
-                            (selectedDrawing.lineStyle || 'solid') === st.id
-                              ? 'text-[var(--accent)] font-bold'
-                              : 'text-[var(--text-main)]'
-                          }`}
-                        >
-                          <svg className="w-9 h-3" viewBox="0 0 36 8">
-                            <line
-                              x1="2"
-                              y1="4"
-                              x2="34"
-                              y2="4"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeDasharray={st.dash}
-                            />
-                          </svg>
-                          <span className="text-[11px]">{st.label}</span>
-                        </button>
-                      ))}
+                          onClose={() => setToolbarMenu('none')}
+                        />
+                      )}
                     </div>
-                  )}
-                </div>
+
+                    {/* Target Fill Color */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setToolbarMenu((m) => (m === 'targetColor' ? 'none' : 'targetColor'))
+                        }
+                        title="Target color"
+                        className={`w-7 h-7 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                          toolbarMenu === 'targetColor'
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <PaintBucket className="w-3.5 h-3.5" />
+                        <span
+                          className="w-4 h-[3px] rounded-xs"
+                          style={{
+                            backgroundColor:
+                              selectedDrawing.targetColor || 'rgba(8, 153, 129, 0.45)',
+                          }}
+                        />
+                      </button>
+                      {toolbarMenu === 'targetColor' && (
+                        <ColorPalettePopover
+                          value={selectedDrawing.targetColor || 'rgba(8, 153, 129, 0.2)'}
+                          onChange={(col) => {
+                            onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, targetColor: col }));
+                          }}
+                          onClose={() => setToolbarMenu('none')}
+                        />
+                      )}
+                    </div>
+
+                    {/* Stop Fill Color */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setToolbarMenu((m) => (m === 'stopColor' ? 'none' : 'stopColor'))
+                        }
+                        title="Stop color"
+                        className={`w-7 h-7 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                          toolbarMenu === 'stopColor'
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <PaintBucket className="w-3.5 h-3.5" />
+                        <span
+                          className="w-4 h-[3px] rounded-xs"
+                          style={{
+                            backgroundColor:
+                              selectedDrawing.stopColor || 'rgba(242, 54, 69, 0.45)',
+                          }}
+                        />
+                      </button>
+                      {toolbarMenu === 'stopColor' && (
+                        <ColorPalettePopover
+                          value={selectedDrawing.stopColor || 'rgba(242, 54, 69, 0.2)'}
+                          onChange={(col) => {
+                            onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, stopColor: col }));
+                          }}
+                          onClose={() => setToolbarMenu('none')}
+                        />
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* 3. Line Color Picker */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setToolbarMenu((m) => (m === 'lineColor' ? 'none' : 'lineColor'))
+                        }
+                        title="Line Color"
+                        className={`w-7 h-7 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                          toolbarMenu === 'lineColor'
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span
+                          className="w-4 h-[3px] rounded-xs"
+                          style={{ backgroundColor: selectedDrawing.color || '#2962ff' }}
+                        />
+                      </button>
+                      {toolbarMenu === 'lineColor' && (
+                        <ColorPalettePopover
+                          value={selectedDrawing.color || '#2962ff'}
+                          onChange={(col) => {
+                            onSelectDrawColor(col);
+                            onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, color: col }));
+                          }}
+                          onClose={() => setToolbarMenu('none')}
+                        />
+                      )}
+                    </div>
+
+                    {/* 4. Text Color & Quick Text */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setToolbarMenu((m) => (m === 'textColor' ? 'none' : 'textColor'))
+                        }
+                        title="Text & Text Color"
+                        className={`w-7 h-7 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                          toolbarMenu === 'textColor'
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <Type className="w-3.5 h-3.5" />
+                        <span
+                          className="w-4 h-[3px] rounded-xs"
+                          style={{
+                            backgroundColor:
+                              selectedDrawing.textColor || selectedDrawing.color || '#2962ff',
+                          }}
+                        />
+                      </button>
+                      {toolbarMenu === 'textColor' && (
+                        <ColorPalettePopover
+                          value={selectedDrawing.textColor || selectedDrawing.color || '#2962ff'}
+                          onChange={(col) => {
+                            onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, textColor: col }));
+                          }}
+                          onClose={() => setToolbarMenu('none')}
+                          extraAction={{
+                            label: selectedDrawing.text ? 'Edit Label Text...' : 'Add Text Label...',
+                            onClick: () => {
+                              setToolbarMenu('none');
+                              onOpenDrawingSettings(selectedDrawing.id, 'text');
+                            },
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* 5. Line Width Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setToolbarMenu((m) => (m === 'lineWidth' ? 'none' : 'lineWidth'))
+                        }
+                        title="Line Width"
+                        className={`h-7 px-2 rounded inline-flex items-center gap-1.5 cursor-pointer ${
+                          toolbarMenu === 'lineWidth'
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <span
+                          className="w-3.5 rounded-full bg-current"
+                          style={{ height: `${Math.max(1, Math.min(4, Math.round(selectedDrawing.lineWidth || 2)))}px` }}
+                        />
+                        <span className="font-mono-num text-[11px] font-semibold">
+                          {Math.round(selectedDrawing.lineWidth || 2)}px
+                        </span>
+                      </button>
+                      {toolbarMenu === 'lineWidth' && (
+                        <div className="absolute left-0 top-9 w-28 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-40">
+                          {[1, 2, 3, 4].map((w) => (
+                            <button
+                              key={w}
+                              type="button"
+                              onClick={() => {
+                                onUpdateDrawing(selectedDrawing.id, (d) => ({ ...d, lineWidth: w }));
+                                setToolbarMenu('none');
+                              }}
+                              className={`w-full px-3 py-1.5 flex items-center justify-between hover:bg-[var(--bg-hover)] cursor-pointer ${
+                                Math.round(selectedDrawing.lineWidth || 2) === w
+                                  ? 'text-[var(--accent)] font-bold'
+                                  : 'text-[var(--text-main)]'
+                              }`}
+                            >
+                              <span
+                                className="w-10 rounded-full bg-current"
+                                style={{ height: `${w}px` }}
+                              />
+                              <span className="font-mono-num text-[11px]">{w}px</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 6. Line Style Dropdown */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setToolbarMenu((m) => (m === 'lineStyle' ? 'none' : 'lineStyle'))
+                        }
+                        title="Line Style"
+                        className={`w-8 h-7 rounded inline-flex items-center justify-center cursor-pointer ${
+                          toolbarMenu === 'lineStyle'
+                            ? 'bg-[var(--bg-active)] text-[var(--accent)]'
+                            : 'text-[var(--text-main)] hover:bg-[var(--bg-hover)]'
+                        }`}
+                      >
+                        <svg className="w-5 h-3" viewBox="0 0 24 8">
+                          <line
+                            x1="2"
+                            y1="4"
+                            x2="22"
+                            y2="4"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeDasharray={
+                              selectedDrawing.lineStyle === 'dashed'
+                                ? '5 3'
+                                : selectedDrawing.lineStyle === 'dotted'
+                                ? '2 3'
+                                : undefined
+                            }
+                          />
+                        </svg>
+                      </button>
+                      {toolbarMenu === 'lineStyle' && (
+                        <div className="absolute left-0 top-9 w-32 bg-[var(--bg-surface)] border border-[var(--border)] rounded-lg shadow-2xl py-1 z-40">
+                          {(
+                            [
+                              { id: 'solid', label: 'Line', dash: undefined },
+                              { id: 'dashed', label: 'Dashed', dash: '5 3' },
+                              { id: 'dotted', label: 'Dotted', dash: '2 3' },
+                            ] as { id: DrawingLineStyle; label: string; dash?: string }[]
+                          ).map((st) => (
+                            <button
+                              key={st.id}
+                              type="button"
+                              onClick={() => {
+                                onUpdateDrawing(selectedDrawing.id, (d) => ({
+                                  ...d,
+                                  lineStyle: st.id,
+                                }));
+                                setToolbarMenu('none');
+                              }}
+                              className={`w-full px-3 py-1.5 flex items-center justify-between hover:bg-[var(--bg-hover)] cursor-pointer ${
+                                (selectedDrawing.lineStyle || 'solid') === st.id
+                                  ? 'text-[var(--accent)] font-bold'
+                                  : 'text-[var(--text-main)]'
+                              }`}
+                            >
+                              <svg className="w-9 h-3" viewBox="0 0 36 8">
+                                <line
+                                  x1="2"
+                                  y1="4"
+                                  x2="34"
+                                  y2="4"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeDasharray={st.dash}
+                                />
+                              </svg>
+                              <span className="text-[11px]">{st.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
 
                 <div className="w-px h-4 bg-[var(--border)] mx-0.5" />
 
@@ -4916,7 +5080,12 @@ export const ChartWorkspace = forwardRef<ChartWorkspaceHandle, ChartWorkspacePro
                   type="button"
                   onClick={() => {
                     setToolbarMenu('none');
-                    onOpenDrawingSettings(selectedDrawing.id, 'style');
+                    onOpenDrawingSettings(
+                      selectedDrawing.id,
+                      selectedDrawing.type === 'long_pos' || selectedDrawing.type === 'short_pos'
+                        ? 'inputs'
+                        : 'style'
+                    );
                   }}
                   title="Settings (Double-click drawing)"
                   className="w-7 h-7 rounded hover:bg-[var(--bg-hover)] inline-flex items-center justify-center text-[var(--text-main)] cursor-pointer"
